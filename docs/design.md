@@ -211,24 +211,29 @@ for markdown round-trip.
 
 ### Round-trip status (verified against the real repo, 2026-06)
 
-The prototype currently uses `tiptap-markdown` and was measured by loading real
-posts, serializing back, and diffing against source:
+Implemented in `web/src/editor/markdown.ts`: a custom `prosemirror-markdown`
+parser + serializer over the TipTap schema. markdown-it `html_block` tokens map
+to the opaque RawHtml node and serialize verbatim; inline raw-HTML parsing is
+disabled so stray `<...>` survives as literal text. tiptap-markdown was removed.
 
-- **Prose + links + images**: clean to within a handful of chars (calsync
-  7674->7667, dungeon 7083->7074, weather 8142->8136) once `@tiptap/extension-link`
-  is added (without it, links silently drop to plain text).
-- **Known bug**: an image followed by a block loses the blank-line separator
-  (`![img](src)## Heading` merges), which would break rendering if written.
-- **Raw HTML is lost**: a bare `<iframe>` (trianglizer 437->125) is converted
-  HTML->DOM->PM and dropped because it matches no schema node. `tiptap-markdown`'s
-  `html:true` does not preserve arbitrary HTML.
+Measured by loading all 24 real posts, serializing back, and diffing:
 
-Conclusion: confirms the warning above. Safe, non-lossy saving requires the
-`prosemirror-markdown` pipeline where `html_block`/`html_inline` tokens map to
-the opaque RawHtml node and serialize verbatim. Until then scribe reads/renders
-real content but **must not write** posts containing raw HTML, and the image
-separator bug must be fixed. Frontmatter round-trip (Go side) is clean modulo
-cosmetic YAML quoting.
+- **18/24 byte-identical** on the first pass. **Raw HTML is preserved**
+  (trianglizer's `<iframe>` is byte-identical), links and images round-trip.
+- The other 6 differ only in **cosmetic normalization that renders identically**:
+  bullet marker `*`->`-`, trailing whitespace stripped, escape churn
+  (`\-`/`\.` dropped, `[x]`->`\[x\]`), and redundant `*` around bold-links.
+- **22/24 are idempotent** (`rt(rt(x)) == rt(x)`); the 2 that aren't (old posts
+  with bold-links nested in italic) **converge to a fixed point after 2-3
+  passes** - bounded churn, never content loss.
+- Frontmatter (Go side) round-trips clean modulo cosmetic YAML quoting
+  (`"x"`->bare, `"x"`->`'x'`).
+
+Conclusion: content, links, images, and raw HTML are preserved; remaining diffs
+are render-identical style normalization within the design's accepted trade-off.
+The full edit -> API -> file write path is validated end-to-end. Saving real
+content is safe; the first save of a hand-written post may normalize cosmetics,
+then stabilizes.
 
 ### Custom content: structured vs opaque
 

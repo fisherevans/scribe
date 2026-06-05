@@ -3,12 +3,13 @@ import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
-import { Markdown } from 'tiptap-markdown'
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { RawHtml } from './RawHtmlNode'
 import { Callout } from './CalloutNode'
 import { Figure } from './FigureNode'
 import { SlashCommand } from './SlashCommand'
+import { createMarkdownParser, serializeMarkdown } from './markdown'
+import type { MarkdownParser } from 'prosemirror-markdown'
 
 interface Props {
     slug: string
@@ -30,35 +31,47 @@ export function Editor({ slug, title, body, onTitle, onBody }: Props) {
                     node.type.name === 'heading' ? 'Section title' : "Write. Press '/' for blocks.",
                 includeChildren: true,
             }),
-            Image,
+            // Image is inline to match markdown semantics (a lone image is a
+            // paragraph containing an inline image), which keeps block
+            // separation correct on serialize.
+            Image.configure({ inline: true }),
             Link.configure({ openOnClick: false, autolink: false }),
             RawHtml,
             Callout,
             Figure,
             SlashCommand,
-            // Markdown is the source of truth: content loads from markdown and
-            // getMarkdown() serializes the doc back. html:true preserves raw HTML
-            // blocks (routed to the opaque RawHtml node via its parseHTML rule).
-            Markdown.configure({ html: true, transformPastedText: true, breaks: false }),
         ],
         content: '',
         autofocus: false,
         editorProps: { attributes: { class: 'prose', spellcheck: 'true' } },
-        onUpdate: ({ editor }) => onBody(editor.storage.markdown.getMarkdown()),
+        // Markdown is the source of truth; serialize the doc on every change.
+        onUpdate: ({ editor }) => onBody(serializeMarkdown(editor.state.doc)),
     })
 
-    // Load (parse) the markdown body when the selected post changes.
+    // Parser is bound to the editor's schema (built once the editor exists).
+    const parser = useMemo<MarkdownParser | null>(
+        () => (editor ? createMarkdownParser(editor.schema) : null),
+        [editor],
+    )
+
+    // Load (parse markdown -> doc) when the selected post changes.
     useEffect(() => {
-        if (!editor || loadedSlug.current === slug) return
-        editor.commands.setContent(body, false)
+        if (!editor || !parser || loadedSlug.current === slug) return
+        const doc = parser.parse(body || '')
+        editor.commands.setContent(doc.toJSON(), false)
         loadedSlug.current = slug
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [slug, editor, body])
+    }, [slug, editor, parser, body])
 
-    // Dev-only: expose the editor so round-trip fidelity can be inspected.
+    // Dev-only: expose a round-trip harness so fidelity can be measured.
     useEffect(() => {
-        if (import.meta.env.DEV && editor) (window as unknown as { scribeEditor?: unknown }).scribeEditor = editor
-    }, [editor])
+        if (!import.meta.env.DEV || !editor || !parser) return
+        ;(window as any).scribeRT = {
+            roundtrip: (md: string) => serializeMarkdown(parser.parse(md || '')),
+            load: (md: string) => editor.commands.setContent(parser.parse(md || '').toJSON(), false),
+            getMarkdown: () => serializeMarkdown(editor.state.doc),
+        }
+    }, [editor, parser])
 
     useEffect(() => {
         const el = titleRef.current
