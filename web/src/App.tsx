@@ -215,6 +215,24 @@ export default function App() {
         }
     }, [])
 
+    const deleteActive = useCallback(async () => {
+        if (!active) return
+        if (!window.confirm(`Delete “${def.feedTitle(active)}”? This removes the file.`)) return
+        const slug = active.slug
+        try {
+            await api.remove(collection, slug)
+        } catch (e) {
+            alert(`Couldn't delete: ${e instanceof Error ? e.message : e}`)
+            return
+        }
+        const rest = lists[collection].filter((r) => r.slug !== slug)
+        const next = rest[0]?.slug ?? null
+        setLists((cur) => ({ ...cur, [collection]: cur[collection].filter((r) => r.slug !== slug) }))
+        setSel((cur) => ({ ...cur, [collection]: next }))
+        writeHash(collection, next, true)
+        setStatus('idle')
+    }, [active, collection, lists, def])
+
     const onModalSubmit = useCallback(
         async (title: string, slug: string) => {
             if (modal.mode === 'new') await createPost(title, slug)
@@ -287,6 +305,7 @@ export default function App() {
                     onMenu={() => setDrawer((d) => !d)}
                     onTheme={() => setThemeOpen(true)}
                     onDetails={() => setDetails(true)}
+                    onDelete={deleteActive}
                     onPromote={promote}
                 />
                 <div className={'app__canvas' + (collection === 'posts' ? '' : ' app__canvas--form')}>

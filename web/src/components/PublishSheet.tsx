@@ -67,7 +67,7 @@ export function PublishSheet({ post, allTags, open, onClose, onPatch, onRename }
                                 slug <span className="field__private" style={{ color: 'var(--ink-faint)' }}>filename · URL path</span>
                             </span>
                             <input
-                                className="field__input field__input--notes"
+                                className="field__input field__input--mono"
                                 value={slugDraft}
                                 spellCheck={false}
                                 onChange={(e) => setSlugDraft(e.target.value)}
@@ -162,7 +162,7 @@ export function PublishSheet({ post, allTags, open, onClose, onPatch, onRename }
 
                         <label className="field field--notes">
                             <span className="field__label">
-                                notes <span className="field__private">private · not yet persisted</span>
+                                notes <span className="field__private">private · never committed</span>
                             </span>
                             <textarea
                                 className="field__input field__input--notes"

@@ -16,11 +16,13 @@ import (
 
 	"github.com/fisherevans/scribe/internal/api"
 	"github.com/fisherevans/scribe/internal/content"
+	"github.com/fisherevans/scribe/internal/store"
 )
 
 func main() {
 	addr := flag.String("addr", envOr("SCRIBE_ADDR", ":8080"), "listen address")
 	repo := flag.String("repo", os.Getenv("SCRIBE_REPO"), "path to the blog repo checkout")
+	data := flag.String("data", envOr("SCRIBE_DATA", defaultDataDir()), "dir for private app-side data (notes); never the repo")
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -34,11 +36,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	store := content.NewStore(*repo)
+	cstore := content.NewStore(*repo)
+	notes, err := store.OpenNotes(filepath.Join(*data, "notes.json"))
+	if err != nil {
+		log.Error("failed to open notes store", "data", *data, "err", err)
+		os.Exit(1)
+	}
 	publicDir := filepath.Join(*repo, "public")
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           api.New(store, publicDir).Routes(),
+		Handler:           api.New(cstore, notes, publicDir).Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -67,4 +74,12 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// defaultDataDir keeps private notes out of the repo, under the user's config dir.
+func defaultDataDir() string {
+	if dir, err := os.UserConfigDir(); err == nil {
+		return filepath.Join(dir, "scribe")
+	}
+	return ".scribe-data"
 }

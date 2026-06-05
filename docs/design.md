@@ -287,9 +287,16 @@ provably tolerates namespaced extension keys.
 
 ## App-side metadata & notes (private, never committed)
 
-Notes, todos, links, idea-jots per resource live **only in the service's SQLite,
+Notes, todos, links, idea-jots per resource live **only in the service's store,
 never in the blog repo**. Private by construction, no history pollution. Keyed
-by `(collection, path)`.
+by `(collection, slug)`.
+
+Implemented: `internal/store` is a file-backed JSON notes store under the data
+dir (`SCRIBE_DATA`, default the user config dir - never the repo; SQLite can
+come later if it outgrows a JSON file). Notes ride on the post resource over the
+API; save persists them, rename re-keys them, delete removes them. Resource
+delete (file removal) and Go tests for the frontmatter round-trip, slug
+sanitization, and the notes store also landed.
 
 ### The rename limitation (known, accepted)
 

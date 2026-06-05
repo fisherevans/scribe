@@ -10,6 +10,7 @@ interface Props {
     onMenu: () => void
     onTheme: () => void
     onDetails: () => void
+    onDelete: () => void
     onPromote: () => void
 }
 
@@ -20,7 +21,7 @@ const STATUS_LABEL: Record<SaveStatus, string> = {
     edited: 'unsaved edits',
 }
 
-export function TopBar({ resource, showDetails, status, promoting, onMenu, onTheme, onDetails, onPromote }: Props) {
+export function TopBar({ resource, showDetails, status, promoting, onMenu, onTheme, onDetails, onDelete, onPromote }: Props) {
     const canPromote = resource && (resource.state === 'staged' || resource.dirty || status === 'edited')
     return (
         <header className="topbar">
@@ -33,6 +34,9 @@ export function TopBar({ resource, showDetails, status, promoting, onMenu, onThe
             <div className="topbar__actions">
                 <button className="btn btn--ghost" onClick={onTheme} type="button" title="theme">
                     aA
+                </button>
+                <button className="btn btn--ghost btn--danger" onClick={onDelete} type="button" disabled={!resource} title="delete">
+                    🗑
                 </button>
                 {showDetails && (
                     <button className="btn btn--ghost" onClick={onDetails} type="button" disabled={!resource}>

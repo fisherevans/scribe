@@ -13,15 +13,17 @@ import (
 	"time"
 
 	"github.com/fisherevans/scribe/internal/content"
+	"github.com/fisherevans/scribe/internal/store"
 )
 
 type Server struct {
 	store     *content.Store
+	notes     *store.Notes
 	publicDir string
 }
 
-func New(store *content.Store, publicDir string) *Server {
-	return &Server{store: store, publicDir: publicDir}
+func New(c *content.Store, notes *store.Notes, publicDir string) *Server {
+	return &Server{store: c, notes: notes, publicDir: publicDir}
 }
 
 func (s *Server) Routes() *http.ServeMux {
@@ -34,12 +36,14 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/posts", s.listPosts)
 	mux.HandleFunc("POST /api/posts", s.createPost)
 	mux.HandleFunc("PUT /api/posts/{slug}", s.savePost)
+	mux.HandleFunc("DELETE /api/posts/{slug}", s.deletePost)
 	mux.HandleFunc("POST /api/posts/{slug}/promote", s.promotePost)
 	mux.HandleFunc("POST /api/posts/{slug}/rename", s.renamePost)
 	mux.HandleFunc("GET /api/posts/{slug}/serialized", s.serializedPost) // round-trip preview
 	mux.HandleFunc("GET /api/tags", s.listTags)
 	mux.HandleFunc("POST /api/tags", s.createTag)
 	mux.HandleFunc("PUT /api/tags/{slug}", s.saveTag)
+	mux.HandleFunc("DELETE /api/tags/{slug}", s.deleteTag)
 	mux.HandleFunc("POST /api/tags/{slug}/promote", s.promoteTag)
 	mux.HandleFunc("GET /api/snippets", emptyList) // not repo-backed; UI demo only
 	return mux
@@ -55,8 +59,8 @@ type postResource struct {
 	Notes string `json:"notes"`
 }
 
-func wrapPost(p content.Post) postResource {
-	return postResource{Kind: "posts", Post: p, State: "promoted", Dirty: false, Notes: ""}
+func (s *Server) postRes(p content.Post) postResource {
+	return postResource{Kind: "posts", Post: p, State: "promoted", Dirty: false, Notes: s.notes.Get("posts", p.Slug)}
 }
 
 type tagResource struct {
@@ -80,7 +84,7 @@ func (s *Server) listPosts(w http.ResponseWriter, _ *http.Request) {
 	}
 	out := make([]postResource, len(posts))
 	for i, p := range posts {
-		out[i] = wrapPost(p)
+		out[i] = s.postRes(p)
 	}
 	writeJSON(w, out)
 }
@@ -96,12 +100,17 @@ func (s *Server) savePost(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	// Notes are private app-side metadata, stored outside the repo.
+	if err := s.notes.Set("posts", in.Post.Slug, in.Notes); err != nil {
+		fail(w, err)
+		return
+	}
 	saved, err := s.store.ReadPost(in.Post.Slug)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	writeJSON(w, wrapPost(*saved))
+	writeJSON(w, s.postRes(*saved))
 }
 
 func (s *Server) createPost(w http.ResponseWriter, _ *http.Request) {
@@ -114,7 +123,7 @@ func (s *Server) createPost(w http.ResponseWriter, _ *http.Request) {
 		Tags:  []string{}, // marshal as [] not null, so the client can read it
 		Body:  "",
 	}
-	res := wrapPost(p)
+	res := s.postRes(p)
 	res.State = "staged"
 	writeJSON(w, res)
 }
@@ -127,7 +136,7 @@ func (s *Server) promotePost(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	res := wrapPost(*saved)
+	res := s.postRes(*saved)
 	writeJSON(w, res)
 }
 
@@ -153,7 +162,26 @@ func (s *Server) renamePost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
+	_ = s.notes.Move("posts", from, to)
 	writeJSON(w, map[string]string{"slug": to})
+}
+
+func (s *Server) deletePost(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	if err := s.store.DeletePost(slug); err != nil {
+		fail(w, err)
+		return
+	}
+	_ = s.notes.Delete("posts", slug)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) deleteTag(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.DeleteTag(r.PathValue("slug")); err != nil {
+		fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) serializedPost(w http.ResponseWriter, r *http.Request) {

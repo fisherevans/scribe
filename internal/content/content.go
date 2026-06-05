@@ -131,6 +131,24 @@ func (s *Store) WritePost(p Post) error {
 	return os.WriteFile(s.postPath(p.Slug), []byte(out), 0o644)
 }
 
+// DeletePost removes a post file. A no-op if it doesn't exist (unsaved draft).
+func (s *Store) DeletePost(slug string) error {
+	err := os.Remove(s.postPath(slug))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+// DeleteTag removes a tag file. A no-op if it doesn't exist.
+func (s *Store) DeleteTag(slug string) error {
+	err := os.Remove(s.tagPath(slug))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
 // RenamePost moves a post file from one slug to another. A no-op if the source
 // doesn't exist yet (an unsaved draft); errors if the target already exists.
 func (s *Store) RenamePost(from, to string) error {

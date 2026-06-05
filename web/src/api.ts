@@ -26,6 +26,11 @@ export const api = {
     create(c: CollectionName): Promise<Resource> {
         return fetch(`/api/${c}`, { method: 'POST' }).then(json)
     },
+    remove(c: CollectionName, slug: string): Promise<void> {
+        return fetch(`/api/${c}/${encodeURIComponent(slug)}`, { method: 'DELETE' }).then((r) => {
+            if (!r.ok && r.status !== 204) throw new Error(`${r.status}`)
+        })
+    },
     // Moves the file (or no-ops for an unsaved draft). Rejects on collision.
     rename(c: CollectionName, slug: string, to: string): Promise<{ slug: string }> {
         return fetch(`/api/${c}/${encodeURIComponent(slug)}/rename`, {

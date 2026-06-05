@@ -235,6 +235,8 @@ button { font-family: inherit; cursor: pointer; }
 }
 .btn:hover:not(:disabled) { color: var(--ink-on-desk); border-color: var(--ink-faint); }
 .btn:disabled { opacity: 0.4; cursor: default; }
+.btn--danger { padding-left: 0.6rem; padding-right: 0.6rem; }
+.btn--danger:hover:not(:disabled) { color: var(--rose); border-color: rgba(192, 125, 84, 0.5); }
 .btn--promote { background: var(--brass); border-color: var(--brass); color: #221808; font-weight: 500; }
 .btn--promote:hover:not(:disabled) { background: #d49a48; border-color: #d49a48; color: #221808; }
 
@@ -669,6 +671,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 .field__input:focus { border-color: var(--brass-deep); }
 .field__input--notes { font-family: var(--mono); font-size: 0.82rem; line-height: 1.55; }
+.field__input--mono { font-family: var(--mono); font-size: 0.82rem; }
 .field--notes { border-top: 1px dashed var(--desk-line); padding-top: 1.2rem; }
 input[type='date'].field__input { font-family: var(--mono); font-size: 0.82rem; color-scheme: dark; }
 
@@ -753,30 +756,6 @@ input[type='date'].field__input { font-family: var(--mono); font-size: 0.82rem; 
 .modal__input--mono { font-family: var(--mono); font-size: 0.85rem; }
 .modal__actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.3rem; }
 
-/* ---- Slug mismatch warning --------------------------------------------- */
-.slugwarn {
-    margin-top: 0.5rem;
-    font-size: 0.78rem;
-    line-height: 1.5;
-    color: var(--rose);
-    background: rgba(192, 125, 84, 0.1);
-    border: 1px solid rgba(192, 125, 84, 0.3);
-    border-radius: 0.45rem;
-    padding: 0.5rem 0.6rem;
-}
-.slugwarn code { font-family: var(--mono); color: var(--ink-on-desk); }
-.slugwarn button {
-    display: inline-block;
-    margin-top: 0.4rem;
-    font-family: var(--mono);
-    font-size: 0.7rem;
-    color: var(--brass);
-    background: var(--brass-soft);
-    border: 1px solid transparent;
-    border-radius: 5px;
-    padding: 0.2rem 0.5rem;
-}
-.slugwarn button:hover { border-color: var(--brass-deep); }
 
 /* ---- Feed controls (filter / sort) ------------------------------------- */
 .feed__controls { display: flex; align-items: center; gap: 0.4rem; padding: 0 0.5rem 0.7rem; }
