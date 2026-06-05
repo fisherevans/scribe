@@ -209,6 +209,27 @@ output are the parts that need control. Consider `novel` (Notion-style TipTap
 editor, React, slash commands) as a UI starting point, swapping its persistence
 for markdown round-trip.
 
+### Round-trip status (verified against the real repo, 2026-06)
+
+The prototype currently uses `tiptap-markdown` and was measured by loading real
+posts, serializing back, and diffing against source:
+
+- **Prose + links + images**: clean to within a handful of chars (calsync
+  7674->7667, dungeon 7083->7074, weather 8142->8136) once `@tiptap/extension-link`
+  is added (without it, links silently drop to plain text).
+- **Known bug**: an image followed by a block loses the blank-line separator
+  (`![img](src)## Heading` merges), which would break rendering if written.
+- **Raw HTML is lost**: a bare `<iframe>` (trianglizer 437->125) is converted
+  HTML->DOM->PM and dropped because it matches no schema node. `tiptap-markdown`'s
+  `html:true` does not preserve arbitrary HTML.
+
+Conclusion: confirms the warning above. Safe, non-lossy saving requires the
+`prosemirror-markdown` pipeline where `html_block`/`html_inline` tokens map to
+the opaque RawHtml node and serialize verbatim. Until then scribe reads/renders
+real content but **must not write** posts containing raw HTML, and the image
+separator bug must be fixed. Frontmatter round-trip (Go side) is clean modulo
+cosmetic YAML quoting.
+
 ### Custom content: structured vs opaque
 
 The `/` menu inserts two kinds of custom block, and the distinction drives how

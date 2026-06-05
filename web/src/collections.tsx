@@ -66,4 +66,6 @@ export const COLLECTIONS: Record<CollectionName, CollectionDef> = {
     },
 }
 
-export const COLLECTION_ORDER: CollectionName[] = ['posts', 'tags', 'snippets']
+// Real repo has posts + tags. `snippets` stays registered as the generic-form
+// example but is not surfaced (no such collection on disk).
+export const COLLECTION_ORDER: CollectionName[] = ['posts', 'tags']

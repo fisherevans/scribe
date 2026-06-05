@@ -1,6 +1,9 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
+import Image from '@tiptap/extension-image'
+import Link from '@tiptap/extension-link'
+import { Markdown } from 'tiptap-markdown'
 import { useEffect, useRef } from 'react'
 import { RawHtml } from './RawHtmlNode'
 import { Callout } from './CalloutNode'
@@ -10,44 +13,53 @@ import { SlashCommand } from './SlashCommand'
 interface Props {
     slug: string
     title: string
-    body: string
+    body: string // markdown
     onTitle: (t: string) => void
-    onBody: (html: string) => void
+    onBody: (markdown: string) => void
 }
 
 export function Editor({ slug, title, body, onTitle, onBody }: Props) {
     const titleRef = useRef<HTMLTextAreaElement>(null)
+    const loadedSlug = useRef<string | null>(null)
 
     const editor = useEditor({
         extensions: [
-            StarterKit.configure({
-                heading: { levels: [2, 3, 4] }, // H1 is the title field
-            }),
+            StarterKit.configure({ heading: { levels: [2, 3, 4] } }),
             Placeholder.configure({
                 placeholder: ({ node }) =>
                     node.type.name === 'heading' ? 'Section title' : "Write. Press '/' for blocks.",
                 includeChildren: true,
             }),
+            Image,
+            Link.configure({ openOnClick: false, autolink: false }),
             RawHtml,
             Callout,
             Figure,
             SlashCommand,
+            // Markdown is the source of truth: content loads from markdown and
+            // getMarkdown() serializes the doc back. html:true preserves raw HTML
+            // blocks (routed to the opaque RawHtml node via its parseHTML rule).
+            Markdown.configure({ html: true, transformPastedText: true, breaks: false }),
         ],
-        content: body,
+        content: '',
         autofocus: false,
-        editorProps: {
-            attributes: { class: 'prose', spellcheck: 'true' },
-        },
-        onUpdate: ({ editor }) => onBody(editor.getHTML()),
+        editorProps: { attributes: { class: 'prose', spellcheck: 'true' } },
+        onUpdate: ({ editor }) => onBody(editor.storage.markdown.getMarkdown()),
     })
 
-    // Swap content when the selected post changes, without firing onUpdate.
+    // Load (parse) the markdown body when the selected post changes.
     useEffect(() => {
-        if (editor && editor.getHTML() !== body) editor.commands.setContent(body, false)
+        if (!editor || loadedSlug.current === slug) return
+        editor.commands.setContent(body, false)
+        loadedSlug.current = slug
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [slug, editor])
+    }, [slug, editor, body])
 
-    // Auto-grow the title to its content.
+    // Dev-only: expose the editor so round-trip fidelity can be inspected.
+    useEffect(() => {
+        if (import.meta.env.DEV && editor) (window as unknown as { scribeEditor?: unknown }).scribeEditor = editor
+    }, [editor])
+
     useEffect(() => {
         const el = titleRef.current
         if (!el) return

@@ -19,8 +19,11 @@ export interface Post extends Base {
     description: string
     tags: string[]
     draft: boolean
-    body: string // markdown (TipTap HTML in the prototype)
-    notes: string // private, app-side only, never committed
+    hasVideo: boolean // preserved on round-trip (not yet surfaced for editing)
+    updatedDate: string
+    heroImage: string
+    body: string // markdown
+    notes: string // private, app-side only, never committed (not yet persisted)
 }
 
 export interface Tag extends Base {

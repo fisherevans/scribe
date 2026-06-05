@@ -47,6 +47,22 @@ export const Callout = Node.create({
         return ReactNodeViewRenderer(CalloutView)
     },
 
+    // tiptap-markdown: emit the callout wrapper with its inner content rendered
+    // as markdown between blank lines (so block content parses back correctly).
+    addStorage() {
+        return {
+            markdown: {
+                serialize(state: any, node: any) {
+                    state.write(`<div data-callout="true" data-tone="${node.attrs.tone}">\n\n`)
+                    state.renderContent(node)
+                    state.write('</div>')
+                    state.closeBlock(node)
+                },
+                parse: {},
+            },
+        }
+    },
+
     addCommands() {
         return {
             insertCallout:

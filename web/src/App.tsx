@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api } from './mock'
+import { api } from './api'
 import type { CollectionName, Post, Resource } from './types'
 import { COLLECTIONS, COLLECTION_ORDER } from './collections'
 import { CollectionRail } from './components/CollectionRail'
@@ -39,30 +39,32 @@ export default function App() {
         })
     }, [])
 
-    // Debounced autosave -> staging, scoped to the active collection.
-    const queueSave = useCallback(
-        (c: CollectionName, slug: string, patch: Partial<Resource>) => {
-            setStatus('edited')
-            if (saveTimer.current) window.clearTimeout(saveTimer.current)
-            saveTimer.current = window.setTimeout(async () => {
-                setStatus('saving')
-                const next = await api.save(c, slug, { ...patch, state: 'staged' } as Partial<Resource>)
-                setLists((cur) => ({ ...cur, [c]: cur[c].map((r) => (r.slug === slug ? next : r)) }))
+    // Debounced autosave: writes the full resource (the service rewrites the
+    // whole file, so a partial would drop untouched frontmatter).
+    const queueSave = useCallback((c: CollectionName, resource: Resource) => {
+        setStatus('edited')
+        if (saveTimer.current) window.clearTimeout(saveTimer.current)
+        saveTimer.current = window.setTimeout(async () => {
+            setStatus('saving')
+            try {
+                const next = await api.save(c, resource.slug, resource)
+                setLists((cur) => ({ ...cur, [c]: cur[c].map((r) => (r.slug === resource.slug ? next : r)) }))
                 setStatus('saved')
-            }, 650)
-        },
-        [],
-    )
+            } catch {
+                setStatus('edited')
+            }
+        }, 650)
+    }, [])
 
     const patch = useCallback(
         (p: Partial<Resource>) => {
             if (!active) return
-            const slug = active.slug
+            const merged = { ...active, ...p, dirty: true } as Resource
             setLists((cur) => ({
                 ...cur,
-                [collection]: cur[collection].map((r) => (r.slug === slug ? ({ ...r, ...p, dirty: true } as Resource) : r)),
+                [collection]: cur[collection].map((r) => (r.slug === merged.slug ? merged : r)),
             }))
-            queueSave(collection, slug, p)
+            queueSave(collection, merged)
         },
         [active, collection, queueSave],
     )

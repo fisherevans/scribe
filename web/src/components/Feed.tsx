@@ -44,7 +44,7 @@ export function Feed({ def, items, activeSlug, onSelect, onNew }: Props) {
                                 </div>
                                 <div className="card__title">{def.feedTitle(r)}</div>
                                 {sub && <div className="card__desc">{sub}</div>}
-                                {def.name === 'posts' && (r as Post).tags.length > 0 && (
+                                {def.name === 'posts' && ((r as Post).tags?.length ?? 0) > 0 && (
                                     <div className="card__tags">
                                         {(r as Post).tags.map((t) => (
                                             <span key={t} className="tag">

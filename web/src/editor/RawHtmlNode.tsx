@@ -45,6 +45,19 @@ export const RawHtml = Node.create({
         return ReactNodeViewRenderer(RawHtmlView)
     },
 
+    // tiptap-markdown: write the stored HTML verbatim as a raw block.
+    addStorage() {
+        return {
+            markdown: {
+                serialize(state: any, node: any) {
+                    state.write(node.attrs.html || '')
+                    state.closeBlock(node)
+                },
+                parse: {},
+            },
+        }
+    },
+
     addCommands() {
         return {
             insertRawHtml:

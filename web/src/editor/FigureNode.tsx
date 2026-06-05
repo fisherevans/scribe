@@ -57,6 +57,22 @@ export const Figure = Node.create({
         return ReactNodeViewRenderer(FigureView)
     },
 
+    // tiptap-markdown: serialize to the figure HTML block.
+    addStorage() {
+        return {
+            markdown: {
+                serialize(state: any, node: any) {
+                    const { src, alt, caption } = node.attrs
+                    state.write(
+                        `<figure data-figure="true"><img src="${src}" alt="${alt}"><figcaption>${caption}</figcaption></figure>`,
+                    )
+                    state.closeBlock(node)
+                },
+                parse: {},
+            },
+        }
+    },
+
     addCommands() {
         return {
             insertFigure:
