@@ -35,6 +35,24 @@ function newMarkdownIt(): MarkdownIt {
         }
         return true
     })
+    // Normalize GFM table tokens for the TipTap table schema: drop thead/tbody
+    // wrappers (rows become direct children of the table) and wrap each cell's
+    // inline content in a paragraph (cells hold block content).
+    md.core.ruler.after('inline', 'table_normalize', (state) => {
+        const src = state.tokens
+        const out: typeof src = []
+        for (let i = 0; i < src.length; i++) {
+            const t = src[i]
+            if (t.type === 'thead_open' || t.type === 'thead_close' || t.type === 'tbody_open' || t.type === 'tbody_close') continue
+            out.push(t)
+            if ((t.type === 'th_open' || t.type === 'td_open') && src[i + 1]?.type === 'inline') {
+                out.push(new state.Token('paragraph_open', 'p', 1), src[i + 1], new state.Token('paragraph_close', 'p', -1))
+                i++
+            }
+        }
+        state.tokens = out
+        return true
+    })
     return md
 }
 
@@ -67,6 +85,10 @@ const tokenSpec = {
         }),
     },
     hardbreak: { node: 'hardBreak' },
+    table: { block: 'table' },
+    tr: { block: 'tableRow' },
+    th: { block: 'tableHeader' },
+    td: { block: 'tableCell' },
     // Block-level raw HTML preserved verbatim (trailing newline trimmed; the
     // serializer re-adds block separation).
     html_block: { node: 'rawHtml', getAttrs: (tok: any) => ({ html: String(tok.content).replace(/\n+$/, '') }) },
@@ -147,6 +169,29 @@ const serializer = new MarkdownSerializer(
         text(state, node) {
             state.text(node.text || '')
         },
+        // GFM table. Rows/cells are rendered here, so they need no own
+        // serializers (the walker never visits them).
+        table(state, node) {
+            const rows: string[][] = []
+            node.forEach((row) => {
+                const cells: string[] = []
+                row.forEach((cell) => cells.push(cellToMarkdown(cell)))
+                rows.push(cells)
+            })
+            if (rows.length === 0) {
+                state.closeBlock(node)
+                return
+            }
+            const cols = Math.max(...rows.map((r) => r.length))
+            const line = (cells: string[]) => '| ' + Array.from({ length: cols }, (_, i) => cells[i] || ' ').join(' | ') + ' |'
+            state.write(line(rows[0]) + '\n')
+            state.write('| ' + Array(cols).fill('---').join(' | ') + ' |\n')
+            for (let i = 1; i < rows.length; i++) {
+                state.write(line(rows[i]))
+                if (i < rows.length - 1) state.write('\n')
+            }
+            state.closeBlock(node)
+        },
         // Opaque: written exactly as held.
         rawHtml(state, node) {
             state.write(node.attrs.html || '')
@@ -181,6 +226,25 @@ const serializer = new MarkdownSerializer(
         },
     },
 )
+
+// Render a table cell's inline content to a single line of markdown (common
+// marks only; pipes escaped). Cells are simple by design.
+function cellToMarkdown(cell: PMNode): string {
+    let out = ''
+    cell.descendants((n) => {
+        if (!n.isText) return true
+        let text = n.text || ''
+        const has = (name: string) => n.marks.some((m) => m.type.name === name)
+        if (has('code')) text = '`' + text + '`'
+        if (has('bold')) text = '**' + text + '**'
+        if (has('italic')) text = '*' + text + '*'
+        const link = n.marks.find((m) => m.type.name === 'link')
+        if (link) text = '[' + text + '](' + link.attrs.href + ')'
+        out += text
+        return false
+    })
+    return out.replace(/\|/g, '\\|').replace(/\n/g, ' ').trim()
+}
 
 export function serializeMarkdown(doc: PMNode): string {
     return serializer.serialize(doc, { tightLists: true })
