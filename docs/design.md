@@ -101,24 +101,21 @@ between `staging` and `main`:
 of that branch). Only the `staging -> main` merge can conflict, and only when
 `main` advanced independently.
 
-### Durability / backup (the public-repo problem)
+### Durability / backup
 
-`fisherevans/log` is **public**. Pushing `staging` to `origin` would make every
-unpublished draft world-readable. Two real options, decide per taste:
+`staging` pushes to the public `origin` (`fisherevans/log`) every ~30-60 min.
+Drafts on a non-default branch being publicly visible is acceptable: it's no
+more exposed than the existing `draft: true` posts, which already deploy to a
+public (if unlinked) URL. Lose the pod -> re-clone, check out `staging`,
+working tree restored; only edits since the last push are at risk, bounded by
+the push interval. The NFS PVC also survives pod reschedule, so the push is
+backup/versioning, not the only line of defense.
 
-1. **PVC + existing NAS backup only.** The NFS PVC survives pod reschedule, and
-   the NAS is already backed up offsite (Hyper Backup -> B2). Pod loss is not
-   data loss. No draft ever leaves the cluster until promoted. Simplest;
-   relies on infra backups rather than git for DR. Unpromoted drafts have no
-   git history off-box.
-2. **Private mirror for `staging`.** Add a second remote pointing at a private
-   repo (e.g. `fisherevans/log-staging`); push `staging` there every ~30-60 min
-   for git-level offsite backup of drafts. `main` still goes to public
-   `origin` on promote. Drafts stay private; you get git history + restore-from-
-   branch. Cost: a second repo and a credential with access to it.
+The one thing that stays out of git is **notes / app-side metadata** - those
+live only in the service's SQLite and are never committed (private by design).
 
-Promote does not depend on either: it's a local merge + push of `main` to the
-public `origin`. Backup is orthogonal.
+Promote is independent of the backup push: it's a local merge of `staging` into
+`main` followed by a push of `main` to `origin`.
 
 Two independent axes, which must not be confused:
 
