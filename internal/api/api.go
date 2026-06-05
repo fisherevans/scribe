@@ -109,6 +109,7 @@ func (s *Server) createPost(w http.ResponseWriter, _ *http.Request) {
 		Slug:  fmt.Sprintf("untitled-%s", randSuffix()),
 		Date:  time.Now().Format("2006-01-02"),
 		Draft: true,
+		Tags:  []string{}, // marshal as [] not null, so the client can read it
 		Body:  "",
 	}
 	res := wrapPost(p)

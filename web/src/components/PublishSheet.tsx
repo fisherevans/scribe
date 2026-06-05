@@ -19,17 +19,19 @@ export function PublishSheet({ post, allTags, open, onClose, onPatch }: Props) {
 
     const suggestions = useMemo(() => {
         if (!post) return []
+        const have = post.tags ?? []
         const q = tagDraft.trim().toLowerCase()
         return allTags
-            .filter((t) => !post.tags.includes(t) && (q === '' || t.toLowerCase().includes(q)))
+            .filter((t) => !have.includes(t) && (q === '' || t.toLowerCase().includes(q)))
             .slice(0, 8)
     }, [allTags, post, tagDraft])
 
     if (!post) return null
 
+    const tags = post.tags ?? []
     const addTag = (raw: string) => {
         const t = raw.trim().toLowerCase().replace(/\s+/g, '-')
-        if (t && !post.tags.includes(t)) onPatch({ tags: [...post.tags, t] })
+        if (t && !tags.includes(t)) onPatch({ tags: [...tags, t] })
         setTagDraft('')
     }
 
@@ -64,15 +66,15 @@ export function PublishSheet({ post, allTags, open, onClose, onPatch }: Props) {
                         <div className="field">
                             <span className="field__label">tags</span>
                             <div className="chips">
-                                {post.tags.map((t) => (
-                                    <button key={t} className="chip" type="button" onClick={() => onPatch({ tags: post.tags.filter((x) => x !== t) })}>
+                                {tags.map((t) => (
+                                    <button key={t} className="chip" type="button" onClick={() => onPatch({ tags: tags.filter((x) => x !== t) })}>
                                         {t} <span className="chip__x">✕</span>
                                     </button>
                                 ))}
                                 <input
                                     className="chips__input"
                                     value={tagDraft}
-                                    placeholder={post.tags.length ? 'add…' : 'add a tag…'}
+                                    placeholder={tags.length ? 'add…' : 'add a tag…'}
                                     onChange={(e) => setTagDraft(e.target.value)}
                                     onFocus={() => setTagFocus(true)}
                                     onBlur={() => setTimeout(() => setTagFocus(false), 120)}
@@ -80,8 +82,8 @@ export function PublishSheet({ post, allTags, open, onClose, onPatch }: Props) {
                                         if (e.key === 'Enter' || e.key === ',') {
                                             e.preventDefault()
                                             addTag(suggestions[0] && tagDraft ? suggestions[0] : tagDraft)
-                                        } else if (e.key === 'Backspace' && !tagDraft && post.tags.length) {
-                                            onPatch({ tags: post.tags.slice(0, -1) })
+                                        } else if (e.key === 'Backspace' && !tagDraft && tags.length) {
+                                            onPatch({ tags: tags.slice(0, -1) })
                                         }
                                     }}
                                 />
