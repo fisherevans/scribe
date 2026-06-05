@@ -1,0 +1,20 @@
+# Go
+/scribe
+*.test
+*.out
+
+# SQLite (app-side metadata, never committed)
+*.db
+*.db-shm
+*.db-wal
+
+# staging working tree (the blog repo checkout lives outside the build)
+/workdir/
+
+# web
+/web/node_modules/
+/web/dist/
+
+# local config / secrets
+.env
+.scribe.local.yml
