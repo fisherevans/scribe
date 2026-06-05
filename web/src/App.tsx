@@ -7,7 +7,7 @@ import { Feed } from './components/Feed'
 import { TopBar, type SaveStatus } from './components/TopBar'
 import { PublishSheet } from './components/PublishSheet'
 import { ThemePanel } from './components/ThemePanel'
-import { NewPostModal } from './components/NewPostModal'
+import { TitleSlugModal } from './components/TitleSlugModal'
 import { applyTheme, DEFAULT_THEME, loadTheme, saveTheme, type Theme } from './theme'
 import { slugify, uniqueSlug } from './slug'
 
@@ -41,7 +41,7 @@ export default function App() {
     const [drawer, setDrawer] = useState(false)
     const [details, setDetails] = useState(false)
     const [themeOpen, setThemeOpen] = useState(false)
-    const [newOpen, setNewOpen] = useState(false)
+    const [modal, setModal] = useState<{ open: boolean; mode: 'new' | 'edit' }>({ open: false, mode: 'new' })
     const [theme, setTheme] = useState<Theme>(loadTheme)
     const saveTimer = useRef<number | null>(null)
     const railW = useRef(loadRail())
@@ -131,11 +131,11 @@ export default function App() {
         setStatus('saved')
     }, [active, collection])
 
-    // +write: posts prompt for a title (-> slug); other collections create
-    // an untitled resource directly.
+    // +write: posts open the title/slug modal; other collections create an
+    // untitled resource directly.
     const onNew = useCallback(async () => {
         if (collection === 'posts') {
-            setNewOpen(true)
+            setModal({ open: true, mode: 'new' })
             return
         }
         const fresh = await api.create(collection)
@@ -147,11 +147,11 @@ export default function App() {
     }, [collection])
 
     const createPost = useCallback(
-        async (title: string) => {
-            const slug = uniqueSlug(slugify(title), lists.posts.map((p) => p.slug))
+        async (title: string, slug: string) => {
+            const uslug = uniqueSlug(slug || slugify(title), lists.posts.map((p) => p.slug))
             const fresh: Post = {
                 kind: 'posts',
-                slug,
+                slug: uslug,
                 title,
                 date: new Date().toISOString().slice(0, 10),
                 description: '',
@@ -165,33 +165,63 @@ export default function App() {
                 dirty: false,
                 notes: '',
             }
-            // Persist immediately (named on purpose), then select it.
-            const saved = (await api.save('posts', slug, fresh)) as Post
+            const saved = (await api.save('posts', uslug, fresh)) as Post
             setLists((cur) => ({ ...cur, posts: [saved, ...cur.posts] }))
-            setSel((cur) => ({ ...cur, posts: slug }))
-            writeHash('posts', slug)
-            setNewOpen(false)
+            setSel((cur) => ({ ...cur, posts: uslug }))
+            writeHash('posts', uslug)
             setStatus('saved')
             setDrawer(false)
         },
         [lists.posts],
     )
 
-    // Rename a post's slug (moves the file). Surfaces collisions.
-    const rename = useCallback(
-        async (from: string, toRaw: string) => {
-            const to = slugify(toRaw)
-            if (!to || to === from) return
+    // Edit title (and optionally slug) together: rename the file first, then
+    // write the new title under the final slug - avoids the debounced autosave
+    // racing the rename and leaving a stale file at the old slug.
+    const applyTitleEdit = useCallback(
+        async (title: string, slug: string) => {
+            if (!active) return
+            const from = active.slug
+            let merged = { ...active, title, dirty: true } as Post
             try {
-                await api.rename('posts', from, to)
-                setLists((cur) => ({ ...cur, posts: cur.posts.map((r) => (r.slug === from ? ({ ...r, slug: to } as Resource) : r)) }))
-                setSel((cur) => ({ ...cur, posts: to }))
-                writeHash('posts', to, true)
+                if (slug !== from) {
+                    await api.rename('posts', from, slug)
+                    merged = { ...merged, slug }
+                }
             } catch (e) {
                 alert(`Couldn't rename: ${e instanceof Error ? e.message : e}`)
+                return
             }
+            const saved = (await api.save('posts', slug, merged)) as Post
+            setLists((cur) => ({ ...cur, posts: cur.posts.map((r) => (r.slug === from ? saved : r)) }))
+            setSel((cur) => ({ ...cur, posts: slug }))
+            writeHash('posts', slug, true)
+            setStatus('saved')
         },
-        [],
+        [active],
+    )
+
+    // Slug-only rename from the details pane.
+    const rename = useCallback(async (from: string, toRaw: string) => {
+        const to = slugify(toRaw)
+        if (!to || to === from) return
+        try {
+            await api.rename('posts', from, to)
+            setLists((cur) => ({ ...cur, posts: cur.posts.map((r) => (r.slug === from ? ({ ...r, slug: to } as Resource) : r)) }))
+            setSel((cur) => ({ ...cur, posts: to }))
+            writeHash('posts', to, true)
+        } catch (e) {
+            alert(`Couldn't rename: ${e instanceof Error ? e.message : e}`)
+        }
+    }, [])
+
+    const onModalSubmit = useCallback(
+        async (title: string, slug: string) => {
+            if (modal.mode === 'new') await createPost(title, slug)
+            else await applyTitleEdit(title, slug)
+            setModal((m) => ({ ...m, open: false }))
+        },
+        [modal.mode, createPost, applyTitleEdit],
     )
 
     const select = useCallback(
@@ -261,7 +291,7 @@ export default function App() {
                 />
                 <div className={'app__canvas' + (collection === 'posts' ? '' : ' app__canvas--form')}>
                     {active ? (
-                        <Experience resource={active} onPatch={patch} />
+                        <Experience resource={active} onPatch={patch} onEditTitle={() => setModal({ open: true, mode: 'edit' })} />
                     ) : (
                         <div className="empty">Nothing here yet. Press “{def.newLabel}”.</div>
                     )}
@@ -278,7 +308,14 @@ export default function App() {
                     onRename={rename}
                 />
             )}
-            <NewPostModal open={newOpen} onCancel={() => setNewOpen(false)} onCreate={createPost} />
+            <TitleSlugModal
+                open={modal.open}
+                mode={modal.mode}
+                initialTitle={modal.mode === 'edit' && active ? (active as Post).title : ''}
+                initialSlug={modal.mode === 'edit' && active ? active.slug : ''}
+                onCancel={() => setModal((m) => ({ ...m, open: false }))}
+                onSubmit={onModalSubmit}
+            />
             <ThemePanel
                 theme={theme}
                 open={themeOpen}

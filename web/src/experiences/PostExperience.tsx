@@ -4,17 +4,19 @@ import type { Post } from '../types'
 interface Props {
     resource: Post
     onPatch: (p: Partial<Post>) => void
+    onEditTitle?: () => void
 }
 
-// Posts get the document-first writing surface. Metadata is deferred to the
-// publish sheet (rendered by App), so this experience is just the page.
-export function PostExperience({ resource, onPatch }: Props) {
+// Posts get the document-first writing surface. The title is an immutable
+// header edited via a modal (onEditTitle); metadata is deferred to the publish
+// sheet (rendered by App).
+export function PostExperience({ resource, onPatch, onEditTitle }: Props) {
     return (
         <Editor
             slug={resource.slug}
             title={resource.title}
             body={resource.body}
-            onTitle={(title) => onPatch({ title })}
+            onEditTitle={onEditTitle ?? (() => {})}
             onBody={(body) => onPatch({ body })}
         />
     )

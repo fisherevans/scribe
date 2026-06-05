@@ -12,6 +12,7 @@ import { GenericExperience, type FieldDef } from './experiences/GenericExperienc
 export interface ExperienceProps {
     resource: Resource
     onPatch: (p: Partial<Resource>) => void
+    onEditTitle?: () => void // posts only: open the title/slug modal
 }
 
 export interface CollectionDef {

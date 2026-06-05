@@ -16,12 +16,11 @@ interface Props {
     slug: string
     title: string
     body: string // markdown
-    onTitle: (t: string) => void
+    onEditTitle: () => void
     onBody: (markdown: string) => void
 }
 
-export function Editor({ slug, title, body, onTitle, onBody }: Props) {
-    const titleRef = useRef<HTMLTextAreaElement>(null)
+export function Editor({ slug, title, body, onEditTitle, onBody }: Props) {
     const loadedSlug = useRef<string | null>(null)
     // Latest props for onCreate (which captures its closure once).
     const bodyRef = useRef(body)
@@ -91,30 +90,14 @@ export function Editor({ slug, title, body, onTitle, onBody }: Props) {
         }
     }, [editor, parser])
 
-    useEffect(() => {
-        const el = titleRef.current
-        if (!el) return
-        el.style.height = 'auto'
-        el.style.height = el.scrollHeight + 'px'
-    }, [title])
-
     return (
         <article className="page">
-            <textarea
-                ref={titleRef}
-                className="page__title"
-                value={title}
-                rows={1}
-                placeholder="Untitled"
-                spellCheck
-                onChange={(e) => onTitle(e.target.value)}
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter' || (e.key === 'ArrowDown' && e.currentTarget.selectionStart === title.length)) {
-                        e.preventDefault()
-                        editor?.commands.focus('start')
-                    }
-                }}
-            />
+            <header className="page__head">
+                <h1 className={'page__title-display' + (title ? '' : ' is-empty')}>{title || 'Untitled'}</h1>
+                <button className="page__edit" type="button" onClick={onEditTitle} title="edit title & slug">
+                    ✎ edit
+                </button>
+            </header>
             <EditorContent editor={editor} className="page__body" />
         </article>
     )

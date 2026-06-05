@@ -35,8 +35,6 @@ export function PublishSheet({ post, allTags, open, onClose, onPatch, onRename }
     if (!post) return null
 
     const tags = post.tags ?? []
-    const titleSlug = slugify(post.title)
-    const slugMismatch = post.title.trim() !== '' && titleSlug !== '' && titleSlug !== post.slug
     const commitSlug = () => {
         if (slugDraft && slugify(slugDraft) !== post.slug) onRename(post.slug, slugDraft)
         else setSlugDraft(post.slug)
@@ -78,14 +76,6 @@ export function PublishSheet({ post, allTags, open, onClose, onPatch, onRename }
                                     if (e.key === 'Enter') e.currentTarget.blur()
                                 }}
                             />
-                            {slugMismatch && (
-                                <div className="slugwarn">
-                                    Title changed — slug is still <code>{post.slug}</code>.
-                                    <button type="button" onClick={() => onRename(post.slug, titleSlug)}>
-                                        use “{titleSlug}”
-                                    </button>
-                                </div>
-                            )}
                         </div>
 
                         <label className="field">
