@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/fisherevans/scribe/internal/content"
@@ -34,6 +35,7 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.HandleFunc("POST /api/posts", s.createPost)
 	mux.HandleFunc("PUT /api/posts/{slug}", s.savePost)
 	mux.HandleFunc("POST /api/posts/{slug}/promote", s.promotePost)
+	mux.HandleFunc("POST /api/posts/{slug}/rename", s.renamePost)
 	mux.HandleFunc("GET /api/posts/{slug}/serialized", s.serializedPost) // round-trip preview
 	mux.HandleFunc("GET /api/tags", s.listTags)
 	mux.HandleFunc("POST /api/tags", s.createTag)
@@ -129,6 +131,31 @@ func (s *Server) promotePost(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, res)
 }
 
+func (s *Server) renamePost(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		To string `json:"to"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		fail(w, err)
+		return
+	}
+	from := r.PathValue("slug")
+	to := sanitizeSlug(in.To)
+	if to == "" {
+		http.Error(w, "invalid slug", http.StatusBadRequest)
+		return
+	}
+	if to == from {
+		writeJSON(w, map[string]string{"slug": from})
+		return
+	}
+	if err := s.store.RenamePost(from, to); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	writeJSON(w, map[string]string{"slug": to})
+}
+
 func (s *Server) serializedPost(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
 	p, err := s.store.ReadPost(slug)
@@ -207,6 +234,24 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 func fail(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), http.StatusInternalServerError)
+}
+
+// sanitizeSlug defensively normalizes a client-supplied slug to filename-safe
+// chars (the client slugifies too; this is the backstop against path tricks).
+func sanitizeSlug(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastDash = false
+		} else if !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }
 
 func randSuffix() string {

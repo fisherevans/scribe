@@ -7,7 +7,9 @@ import { Feed } from './components/Feed'
 import { TopBar, type SaveStatus } from './components/TopBar'
 import { PublishSheet } from './components/PublishSheet'
 import { ThemePanel } from './components/ThemePanel'
+import { NewPostModal } from './components/NewPostModal'
 import { applyTheme, DEFAULT_THEME, loadTheme, saveTheme, type Theme } from './theme'
+import { slugify, uniqueSlug } from './slug'
 
 type ByCollection<T> = Record<CollectionName, T>
 const emptyLists: ByCollection<Resource[]> = { posts: [], tags: [], snippets: [] }
@@ -39,6 +41,7 @@ export default function App() {
     const [drawer, setDrawer] = useState(false)
     const [details, setDetails] = useState(false)
     const [themeOpen, setThemeOpen] = useState(false)
+    const [newOpen, setNewOpen] = useState(false)
     const [theme, setTheme] = useState<Theme>(loadTheme)
     const saveTimer = useRef<number | null>(null)
     const railW = useRef(loadRail())
@@ -128,7 +131,13 @@ export default function App() {
         setStatus('saved')
     }, [active, collection])
 
-    const create = useCallback(async () => {
+    // +write: posts prompt for a title (-> slug); other collections create
+    // an untitled resource directly.
+    const onNew = useCallback(async () => {
+        if (collection === 'posts') {
+            setNewOpen(true)
+            return
+        }
         const fresh = await api.create(collection)
         setLists((cur) => ({ ...cur, [collection]: [fresh, ...cur[collection]] }))
         setSel((cur) => ({ ...cur, [collection]: fresh.slug }))
@@ -136,6 +145,54 @@ export default function App() {
         setStatus('idle')
         setDrawer(false)
     }, [collection])
+
+    const createPost = useCallback(
+        async (title: string) => {
+            const slug = uniqueSlug(slugify(title), lists.posts.map((p) => p.slug))
+            const fresh: Post = {
+                kind: 'posts',
+                slug,
+                title,
+                date: new Date().toISOString().slice(0, 10),
+                description: '',
+                tags: [],
+                draft: true,
+                hasVideo: false,
+                updatedDate: '',
+                heroImage: '',
+                body: '',
+                state: 'staged',
+                dirty: false,
+                notes: '',
+            }
+            // Persist immediately (named on purpose), then select it.
+            const saved = (await api.save('posts', slug, fresh)) as Post
+            setLists((cur) => ({ ...cur, posts: [saved, ...cur.posts] }))
+            setSel((cur) => ({ ...cur, posts: slug }))
+            writeHash('posts', slug)
+            setNewOpen(false)
+            setStatus('saved')
+            setDrawer(false)
+        },
+        [lists.posts],
+    )
+
+    // Rename a post's slug (moves the file). Surfaces collisions.
+    const rename = useCallback(
+        async (from: string, toRaw: string) => {
+            const to = slugify(toRaw)
+            if (!to || to === from) return
+            try {
+                await api.rename('posts', from, to)
+                setLists((cur) => ({ ...cur, posts: cur.posts.map((r) => (r.slug === from ? ({ ...r, slug: to } as Resource) : r)) }))
+                setSel((cur) => ({ ...cur, posts: to }))
+                writeHash('posts', to, true)
+            } catch (e) {
+                alert(`Couldn't rename: ${e instanceof Error ? e.message : e}`)
+            }
+        },
+        [],
+    )
 
     const select = useCallback(
         (slug: string) => {
@@ -185,7 +242,7 @@ export default function App() {
             <div className="app__nav">
                 <CollectionRail active={collection} onSelect={switchCollection} />
                 <div className="app__feed">
-                    <Feed def={def} items={items} activeSlug={activeSlug} allTags={allTags} onSelect={select} onNew={create} />
+                    <Feed def={def} items={items} activeSlug={activeSlug} allTags={allTags} onSelect={select} onNew={onNew} />
                 </div>
                 <div className="resizer" onPointerDown={startResize} title="drag to resize" />
             </div>
@@ -218,8 +275,10 @@ export default function App() {
                     open={details}
                     onClose={() => setDetails(false)}
                     onPatch={patch as (p: Partial<Post>) => void}
+                    onRename={rename}
                 />
             )}
+            <NewPostModal open={newOpen} onCancel={() => setNewOpen(false)} onCreate={createPost} />
             <ThemePanel
                 theme={theme}
                 open={themeOpen}

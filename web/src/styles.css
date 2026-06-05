@@ -652,6 +652,62 @@ input[type='date'].field__input { font-family: var(--mono); font-size: 0.82rem; 
 
 .empty { display: grid; place-items: center; height: 60vh; color: var(--ink-faint); font-style: italic; }
 
+/* ---- New-post modal ----------------------------------------------------- */
+.modal {
+    position: fixed;
+    z-index: 95;
+    top: 22vh;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(28rem, 92vw);
+    background: linear-gradient(180deg, var(--desk-2), var(--desk));
+    border: 1px solid var(--desk-line);
+    border-radius: 0.7rem;
+    box-shadow: 0 30px 70px -24px rgba(0, 0, 0, 0.8);
+    padding: 1.3rem 1.4rem;
+}
+.modal__title { font-family: var(--serif-display); font-size: 1.3rem; color: var(--ink-on-desk); margin-bottom: 0.9rem; }
+.modal__input {
+    width: 100%;
+    background: var(--desk);
+    border: 1px solid var(--desk-line);
+    border-radius: 0.5rem;
+    color: var(--ink-on-desk);
+    font-family: var(--serif-body);
+    font-size: 1.1rem;
+    padding: 0.6rem 0.7rem;
+    outline: none;
+}
+.modal__input:focus { border-color: var(--brass-deep); }
+.modal__slug { font-family: var(--mono); font-size: 0.72rem; color: var(--ink-faint); margin-top: 0.6rem; }
+.modal__slug code { color: var(--brass); }
+.modal__actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.2rem; }
+
+/* ---- Slug mismatch warning --------------------------------------------- */
+.slugwarn {
+    margin-top: 0.5rem;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--rose);
+    background: rgba(192, 125, 84, 0.1);
+    border: 1px solid rgba(192, 125, 84, 0.3);
+    border-radius: 0.45rem;
+    padding: 0.5rem 0.6rem;
+}
+.slugwarn code { font-family: var(--mono); color: var(--ink-on-desk); }
+.slugwarn button {
+    display: inline-block;
+    margin-top: 0.4rem;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--brass);
+    background: var(--brass-soft);
+    border: 1px solid transparent;
+    border-radius: 5px;
+    padding: 0.2rem 0.5rem;
+}
+.slugwarn button:hover { border-color: var(--brass-deep); }
+
 /* ---- Feed controls (filter / sort) ------------------------------------- */
 .feed__controls { display: flex; align-items: center; gap: 0.4rem; padding: 0 0.5rem 0.7rem; }
 .ctrl {

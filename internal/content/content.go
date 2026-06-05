@@ -131,6 +131,19 @@ func (s *Store) WritePost(p Post) error {
 	return os.WriteFile(s.postPath(p.Slug), []byte(out), 0o644)
 }
 
+// RenamePost moves a post file from one slug to another. A no-op if the source
+// doesn't exist yet (an unsaved draft); errors if the target already exists.
+func (s *Store) RenamePost(from, to string) error {
+	src, dst := s.postPath(from), s.postPath(to)
+	if _, err := os.Stat(dst); err == nil {
+		return fmt.Errorf("a post named %q already exists", to)
+	}
+	if _, err := os.Stat(src); os.IsNotExist(err) {
+		return nil // unsaved draft - nothing on disk to move
+	}
+	return os.Rename(src, dst)
+}
+
 // SerializePost returns the bytes WritePost would write, without touching disk.
 // Used to preview round-trip fidelity before any real save.
 func (s *Store) SerializePost(p Post) []byte {

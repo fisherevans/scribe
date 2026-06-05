@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Post } from '../types'
+import { slugify } from '../slug'
 
 interface Props {
     post: Post | null
@@ -8,14 +9,19 @@ interface Props {
     open: boolean
     onClose: () => void
     onPatch: (patch: Partial<Post>) => void
+    onRename: (from: string, to: string) => void
 }
 
 // Deferred metadata. None of it gates writing. Tags autocomplete against the
 // existing tag collection so you pick the canonical slug instead of guessing
 // game-dev vs gamedev. Notes are private app-side state (not yet persisted).
-export function PublishSheet({ post, allTags, open, onClose, onPatch }: Props) {
+export function PublishSheet({ post, allTags, open, onClose, onPatch, onRename }: Props) {
     const [tagDraft, setTagDraft] = useState('')
     const [tagFocus, setTagFocus] = useState(false)
+    const [slugDraft, setSlugDraft] = useState('')
+    useEffect(() => {
+        setSlugDraft(post?.slug ?? '')
+    }, [post?.slug])
 
     const suggestions = useMemo(() => {
         if (!post) return []
@@ -29,6 +35,12 @@ export function PublishSheet({ post, allTags, open, onClose, onPatch }: Props) {
     if (!post) return null
 
     const tags = post.tags ?? []
+    const titleSlug = slugify(post.title)
+    const slugMismatch = post.title.trim() !== '' && titleSlug !== '' && titleSlug !== post.slug
+    const commitSlug = () => {
+        if (slugDraft && slugify(slugDraft) !== post.slug) onRename(post.slug, slugDraft)
+        else setSlugDraft(post.slug)
+    }
     const addTag = (raw: string) => {
         const t = raw.trim().toLowerCase().replace(/\s+/g, '-')
         if (t && !tags.includes(t)) onPatch({ tags: [...tags, t] })
@@ -50,6 +62,30 @@ export function PublishSheet({ post, allTags, open, onClose, onPatch }: Props) {
                         <div className="sheet__head">
                             <span className="sheet__title">details</span>
                             <button className="sheet__close" onClick={onClose} type="button">✕</button>
+                        </div>
+
+                        <div className="field">
+                            <span className="field__label">
+                                slug <span className="field__private" style={{ color: 'var(--ink-faint)' }}>filename · URL path</span>
+                            </span>
+                            <input
+                                className="field__input field__input--notes"
+                                value={slugDraft}
+                                spellCheck={false}
+                                onChange={(e) => setSlugDraft(e.target.value)}
+                                onBlur={commitSlug}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') e.currentTarget.blur()
+                                }}
+                            />
+                            {slugMismatch && (
+                                <div className="slugwarn">
+                                    Title changed — slug is still <code>{post.slug}</code>.
+                                    <button type="button" onClick={() => onRename(post.slug, titleSlug)}>
+                                        use “{titleSlug}”
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
                         <label className="field">

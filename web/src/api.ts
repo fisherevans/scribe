@@ -26,4 +26,12 @@ export const api = {
     create(c: CollectionName): Promise<Resource> {
         return fetch(`/api/${c}`, { method: 'POST' }).then(json)
     },
+    // Moves the file (or no-ops for an unsaved draft). Rejects on collision.
+    rename(c: CollectionName, slug: string, to: string): Promise<{ slug: string }> {
+        return fetch(`/api/${c}/${encodeURIComponent(slug)}/rename`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ to }),
+        }).then(json)
+    },
 }
