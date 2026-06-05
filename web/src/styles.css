@@ -273,7 +273,7 @@ button { font-family: inherit; cursor: pointer; }
 .page__title::placeholder { color: var(--ink-faintest); font-style: italic; }
 
 /* ---- Prose (the body) --------------------------------------------------- */
-.prose { outline: none; font-size: 1.2rem; line-height: 1.72; color: var(--ink); }
+.prose { outline: none; font-size: var(--prose-size, 1.2rem); line-height: var(--prose-leading, 1.72); color: var(--ink); }
 .prose:focus { outline: none; }
 .prose > * { margin: 0 0 1.15rem; }
 .prose p { font-weight: 400; }
@@ -301,6 +301,7 @@ button { font-family: inherit; cursor: pointer; }
 .prose li { margin-bottom: 0.4rem; }
 .prose li::marker { color: var(--brass-deep); }
 .prose hr { border: none; border-top: 1px solid var(--paper-line); margin: 2.2rem auto; width: 42%; }
+.prose img { max-width: 100%; height: auto; display: block; margin: 1.4rem auto; border-radius: 0.35rem; }
 .prose code {
     font-family: var(--mono);
     font-size: 0.85em;
@@ -593,6 +594,27 @@ input[type='date'].field__input { font-family: var(--mono); font-size: 0.82rem; 
 .chip__x { color: var(--ink-faint); font-size: 0.62rem; }
 .chip:hover .chip__x { color: var(--rose); }
 .chips__input { flex: 1; min-width: 5rem; background: none; border: none; outline: none; color: var(--ink-on-desk); font-family: var(--mono); font-size: 0.78rem; padding: 0.15rem; }
+.suggest {
+    margin-top: 0.35rem;
+    background: var(--desk-3);
+    border: 1px solid var(--desk-line);
+    border-radius: 0.5rem;
+    padding: 0.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+.suggest__item {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--ink-mute);
+    background: var(--desk);
+    border: 1px solid var(--desk-line);
+    border-radius: 5px;
+    padding: 0.2rem 0.5rem;
+}
+.suggest__item:hover { color: var(--ink-on-desk); border-color: var(--brass-deep); background: var(--brass-soft); }
+.field__heropreview { display: block; width: 100%; margin-top: 0.5rem; border-radius: 0.4rem; border: 1px solid var(--desk-line); }
 
 .toggle { display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; padding-bottom: 0.55rem; }
 .toggle input { position: absolute; opacity: 0; }
@@ -603,6 +625,33 @@ input[type='date'].field__input { font-family: var(--mono); font-size: 0.82rem; 
 .toggle input:checked + .toggle__track::after { transform: translateX(0.95rem); background: var(--brass); }
 
 .empty { display: grid; place-items: center; height: 60vh; color: var(--ink-faint); font-style: italic; }
+
+/* ---- Feed controls (filter / sort) ------------------------------------- */
+.feed__controls { display: flex; align-items: center; gap: 0.4rem; padding: 0 0.5rem 0.7rem; }
+.ctrl {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--ink-mute);
+    background: var(--desk);
+    border: 1px solid var(--desk-line);
+    border-radius: 0.4rem;
+    padding: 0.28rem 0.4rem;
+    outline: none;
+}
+.ctrl:focus { border-color: var(--brass-deep); }
+.feed__count { margin-left: auto; font-family: var(--mono); font-size: 0.66rem; color: var(--ink-faint); }
+
+/* ---- Rail resizer ------------------------------------------------------- */
+.resizer { flex: none; width: 6px; margin-left: -3px; cursor: col-resize; background: transparent; transition: background 0.15s; z-index: 5; }
+.resizer:hover { background: var(--brass-soft); }
+
+/* ---- Theme panel extras ------------------------------------------------- */
+.sheet--left { left: 0; right: auto; border-left: none; border-right: 1px solid var(--desk-line); box-shadow: 20px 0 50px -20px rgba(0, 0, 0, 0.7); }
+.field__val { color: var(--ink-faint); text-transform: none; letter-spacing: 0; }
+.range { width: 100%; accent-color: var(--brass); }
+.color { display: flex; flex-direction: column; gap: 0.4rem; }
+.color__swatch { width: 100%; height: 2rem; border: 1px solid var(--desk-line); border-radius: 0.4rem; background: var(--desk); padding: 2px; }
+.theme__reset { width: 100%; margin-top: 0.5rem; }
 
 /* ---- Scrollbars --------------------------------------------------------- */
 .app__rail::-webkit-scrollbar, .app__canvas::-webkit-scrollbar, .sheet::-webkit-scrollbar, .slash::-webkit-scrollbar { width: 9px; }
@@ -624,6 +673,7 @@ input[type='date'].field__input { font-family: var(--mono); font-size: 0.82rem; 
     .app--drawer .app__nav { transform: translateX(0); }
     .app--drawer .app__scrim { display: block; position: fixed; inset: 0; z-index: 85; background: rgba(10, 8, 6, 0.5); }
     .topbar__menu { display: block; }
+    .resizer { display: none; }
     .app__canvas { padding: 1rem 0.6rem 7rem; }
     .page { border-radius: 0.3rem; }
 }

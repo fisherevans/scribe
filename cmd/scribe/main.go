@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"time"
 
 	"github.com/fisherevans/scribe/internal/api"
@@ -34,9 +35,10 @@ func main() {
 	}
 
 	store := content.NewStore(*repo)
+	publicDir := filepath.Join(*repo, "public")
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           api.New(store).Routes(),
+		Handler:           api.New(store, publicDir).Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

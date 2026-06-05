@@ -8,7 +8,11 @@ export default defineConfig({
     server: {
         port: 4330,
         proxy: {
+            // API + the blog's site-relative assets (served from repo/public by
+            // the Go service) so images like /posts/<slug>/x.svg resolve here.
             '/api': 'http://localhost:8080',
+            '/posts': 'http://localhost:8080',
+            '/assets': 'http://localhost:8080',
         },
     },
 })

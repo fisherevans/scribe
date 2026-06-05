@@ -1,19 +1,29 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Post } from '../types'
 
 interface Props {
     post: Post | null
+    allTags: string[]
     open: boolean
     onClose: () => void
     onPatch: (patch: Partial<Post>) => void
 }
 
-// The deferred metadata. None of this gates writing; it lives here and is only
-// opened when you choose to. Tags are plain chips, not a repeater. Notes are
-// private app-side state, never committed to git.
-export function PublishSheet({ post, open, onClose, onPatch }: Props) {
+// Deferred metadata. None of it gates writing. Tags autocomplete against the
+// existing tag collection so you pick the canonical slug instead of guessing
+// game-dev vs gamedev. Notes are private app-side state (not yet persisted).
+export function PublishSheet({ post, allTags, open, onClose, onPatch }: Props) {
     const [tagDraft, setTagDraft] = useState('')
+    const [tagFocus, setTagFocus] = useState(false)
+
+    const suggestions = useMemo(() => {
+        if (!post) return []
+        const q = tagDraft.trim().toLowerCase()
+        return allTags
+            .filter((t) => !post.tags.includes(t) && (q === '' || t.toLowerCase().includes(q)))
+            .slice(0, 8)
+    }, [allTags, post, tagDraft])
 
     if (!post) return null
 
@@ -27,13 +37,7 @@ export function PublishSheet({ post, open, onClose, onPatch }: Props) {
         <AnimatePresence>
             {open && (
                 <>
-                    <motion.div
-                        className="scrim"
-                        onClick={onClose}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                    />
+                    <motion.div className="scrim" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
                     <motion.aside
                         className="sheet"
                         initial={{ x: '100%' }}
@@ -43,9 +47,7 @@ export function PublishSheet({ post, open, onClose, onPatch }: Props) {
                     >
                         <div className="sheet__head">
                             <span className="sheet__title">details</span>
-                            <button className="sheet__close" onClick={onClose} type="button">
-                                ✕
-                            </button>
+                            <button className="sheet__close" onClick={onClose} type="button">✕</button>
                         </div>
 
                         <label className="field">
@@ -72,46 +74,71 @@ export function PublishSheet({ post, open, onClose, onPatch }: Props) {
                                     value={tagDraft}
                                     placeholder={post.tags.length ? 'add…' : 'add a tag…'}
                                     onChange={(e) => setTagDraft(e.target.value)}
+                                    onFocus={() => setTagFocus(true)}
+                                    onBlur={() => setTimeout(() => setTagFocus(false), 120)}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' || e.key === ',') {
                                             e.preventDefault()
-                                            addTag(tagDraft)
+                                            addTag(suggestions[0] && tagDraft ? suggestions[0] : tagDraft)
                                         } else if (e.key === 'Backspace' && !tagDraft && post.tags.length) {
                                             onPatch({ tags: post.tags.slice(0, -1) })
                                         }
                                     }}
                                 />
                             </div>
+                            {tagFocus && suggestions.length > 0 && (
+                                <div className="suggest">
+                                    {suggestions.map((t) => (
+                                        <button key={t} type="button" className="suggest__item" onMouseDown={(e) => { e.preventDefault(); addTag(t) }}>
+                                            {t}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         <div className="field field--row">
                             <label className="field field--grow">
                                 <span className="field__label">date</span>
-                                <input
-                                    className="field__input"
-                                    type="date"
-                                    value={post.date}
-                                    onChange={(e) => onPatch({ date: e.target.value })}
-                                />
+                                <input className="field__input" type="date" value={post.date} onChange={(e) => onPatch({ date: e.target.value })} />
                             </label>
-                            <label className="toggle">
-                                <input
-                                    type="checkbox"
-                                    checked={post.draft}
-                                    onChange={(e) => onPatch({ draft: e.target.checked })}
-                                />
-                                <span className="toggle__track" />
-                                <span className="field__label">draft</span>
+                            <label className="field field--grow">
+                                <span className="field__label">updated</span>
+                                <input className="field__input" type="date" value={post.updatedDate} onChange={(e) => onPatch({ updatedDate: e.target.value })} />
                             </label>
                         </div>
 
+                        <div className="field field--row">
+                            <label className="toggle">
+                                <input type="checkbox" checked={post.draft} onChange={(e) => onPatch({ draft: e.target.checked })} />
+                                <span className="toggle__track" />
+                                <span className="field__label">draft</span>
+                            </label>
+                            <label className="toggle">
+                                <input type="checkbox" checked={post.hasVideo} onChange={(e) => onPatch({ hasVideo: e.target.checked })} />
+                                <span className="toggle__track" />
+                                <span className="field__label">has video</span>
+                            </label>
+                        </div>
+
+                        <label className="field">
+                            <span className="field__label">hero image</span>
+                            <input
+                                className="field__input"
+                                value={post.heroImage}
+                                placeholder="https://media.fisher.sh/… or /posts/<slug>/hero.png"
+                                onChange={(e) => onPatch({ heroImage: e.target.value })}
+                            />
+                            {post.heroImage && <img className="field__heropreview" src={post.heroImage} alt="hero preview" />}
+                        </label>
+
                         <label className="field field--notes">
                             <span className="field__label">
-                                notes <span className="field__private">private · never committed</span>
+                                notes <span className="field__private">private · not yet persisted</span>
                             </span>
                             <textarea
                                 className="field__input field__input--notes"
-                                rows={6}
+                                rows={5}
                                 value={post.notes}
                                 placeholder="Links, reminders, todos, half-ideas. Stays on the scribe side, out of git."
                                 onChange={(e) => onPatch({ notes: e.target.value })}

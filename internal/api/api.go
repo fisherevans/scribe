@@ -15,13 +15,20 @@ import (
 )
 
 type Server struct {
-	store *content.Store
+	store     *content.Store
+	publicDir string
 }
 
-func New(store *content.Store) *Server { return &Server{store: store} }
+func New(store *content.Store, publicDir string) *Server {
+	return &Server{store: store, publicDir: publicDir}
+}
 
 func (s *Server) Routes() *http.ServeMux {
 	mux := http.NewServeMux()
+	// Serve the repo's public/ so site-relative asset paths in posts
+	// (e.g. /posts/calsync/demo.svg, /assets/...) resolve in the editor. The
+	// specific /api/... patterns below take precedence over this catch-all.
+	mux.Handle("/", http.FileServer(http.Dir(s.publicDir)))
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/posts", s.listPosts)
 	mux.HandleFunc("POST /api/posts", s.createPost)

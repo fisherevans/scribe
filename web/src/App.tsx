@@ -6,10 +6,17 @@ import { CollectionRail } from './components/CollectionRail'
 import { Feed } from './components/Feed'
 import { TopBar, type SaveStatus } from './components/TopBar'
 import { PublishSheet } from './components/PublishSheet'
+import { ThemePanel } from './components/ThemePanel'
+import { applyTheme, DEFAULT_THEME, loadTheme, saveTheme, type Theme } from './theme'
 
 type ByCollection<T> = Record<CollectionName, T>
 const emptyLists: ByCollection<Resource[]> = { posts: [], tags: [], snippets: [] }
 const emptySel: ByCollection<string | null> = { posts: null, tags: null, snippets: null }
+
+const loadRail = () => {
+    const v = parseFloat(localStorage.getItem('scribe-rail') || '')
+    return Number.isFinite(v) ? v : 19
+}
 
 export default function App() {
     const [collection, setCollection] = useState<CollectionName>('posts')
@@ -19,12 +26,24 @@ export default function App() {
     const [promoting, setPromoting] = useState(false)
     const [drawer, setDrawer] = useState(false)
     const [details, setDetails] = useState(false)
+    const [themeOpen, setThemeOpen] = useState(false)
+    const [theme, setTheme] = useState<Theme>(loadTheme)
     const saveTimer = useRef<number | null>(null)
+    const railW = useRef(loadRail())
 
     const def = COLLECTIONS[collection]
     const items = lists[collection]
     const activeSlug = sel[collection]
     const active = items.find((r) => r.slug === activeSlug) ?? null
+
+    useEffect(() => {
+        applyTheme(theme)
+        saveTheme(theme)
+    }, [theme])
+
+    useEffect(() => {
+        document.documentElement.style.setProperty('--rail-w', railW.current + 'rem')
+    }, [])
 
     useEffect(() => {
         Promise.all(COLLECTION_ORDER.map((c) => api.list(c))).then((results) => {
@@ -39,8 +58,6 @@ export default function App() {
         })
     }, [])
 
-    // Debounced autosave: writes the full resource (the service rewrites the
-    // whole file, so a partial would drop untouched frontmatter).
     const queueSave = useCallback((c: CollectionName, resource: Resource) => {
         setStatus('edited')
         if (saveTimer.current) window.clearTimeout(saveTimer.current)
@@ -60,10 +77,7 @@ export default function App() {
         (p: Partial<Resource>) => {
             if (!active) return
             const merged = { ...active, ...p, dirty: true } as Resource
-            setLists((cur) => ({
-                ...cur,
-                [collection]: cur[collection].map((r) => (r.slug === merged.slug ? merged : r)),
-            }))
+            setLists((cur) => ({ ...cur, [collection]: cur[collection].map((r) => (r.slug === merged.slug ? merged : r)) }))
             queueSave(collection, merged)
         },
         [active, collection, queueSave],
@@ -101,15 +115,37 @@ export default function App() {
         setDetails(false)
     }, [])
 
+    // Drag-resize the feed rail (updates --rail-w live; persisted).
+    const startResize = useCallback((e: React.PointerEvent) => {
+        e.preventDefault()
+        const railPx = 3.6 * 16 // collection rail width
+        const onMove = (ev: PointerEvent) => {
+            const rem = Math.min(34, Math.max(13, (ev.clientX - railPx) / 16))
+            railW.current = rem
+            document.documentElement.style.setProperty('--rail-w', rem + 'rem')
+        }
+        const onUp = () => {
+            window.removeEventListener('pointermove', onMove)
+            window.removeEventListener('pointerup', onUp)
+            document.body.style.cursor = ''
+            localStorage.setItem('scribe-rail', String(railW.current))
+        }
+        document.body.style.cursor = 'col-resize'
+        window.addEventListener('pointermove', onMove)
+        window.addEventListener('pointerup', onUp)
+    }, [])
+
     const Experience = def.Experience
+    const allTags = lists.tags.map((t) => t.slug)
 
     return (
         <div className={'app' + (drawer ? ' app--drawer' : '')}>
             <div className="app__nav">
                 <CollectionRail active={collection} onSelect={switchCollection} />
                 <div className="app__feed">
-                    <Feed def={def} items={items} activeSlug={activeSlug} onSelect={select} onNew={create} />
+                    <Feed def={def} items={items} activeSlug={activeSlug} allTags={allTags} onSelect={select} onNew={create} />
                 </div>
+                <div className="resizer" onPointerDown={startResize} title="drag to resize" />
             </div>
             <div className="app__scrim" onClick={() => setDrawer(false)} />
 
@@ -120,6 +156,7 @@ export default function App() {
                     status={status}
                     promoting={promoting}
                     onMenu={() => setDrawer((d) => !d)}
+                    onTheme={() => setThemeOpen(true)}
                     onDetails={() => setDetails(true)}
                     onPromote={promote}
                 />
@@ -135,11 +172,19 @@ export default function App() {
             {def.hasDetails && (
                 <PublishSheet
                     post={active && active.kind === 'posts' ? (active as Post) : null}
+                    allTags={allTags}
                     open={details}
                     onClose={() => setDetails(false)}
                     onPatch={patch as (p: Partial<Post>) => void}
                 />
             )}
+            <ThemePanel
+                theme={theme}
+                open={themeOpen}
+                onChange={setTheme}
+                onReset={() => setTheme({ ...DEFAULT_THEME })}
+                onClose={() => setThemeOpen(false)}
+            />
         </div>
     )
 }
