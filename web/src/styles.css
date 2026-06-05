@@ -36,6 +36,8 @@
 html, body, #root { height: 100%; }
 body {
     margin: 0;
+    overflow: hidden; /* the app owns its scrollers; keeps the page from scrolling behind the keyboard */
+    overscroll-behavior: none;
     background: var(--desk);
     color: var(--ink-on-desk);
     font-family: var(--serif-body);
@@ -46,7 +48,7 @@ button { font-family: inherit; cursor: pointer; }
 ::selection { background: var(--brass-soft); }
 
 /* ---- App shell ---------------------------------------------------------- */
-.app { display: flex; height: 100%; }
+.app { display: flex; height: var(--app-vh, 100dvh); }
 .app__nav {
     display: flex;
     flex: none;
@@ -209,7 +211,17 @@ button { font-family: inherit; cursor: pointer; }
     font-size: 1.3rem;
     line-height: 1;
 }
-.topbar__status { flex: 1; }
+.topbar__status { flex: 1; display: flex; align-items: center; gap: 0.6rem; }
+.viewbadge {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-faint);
+    border: 1px solid var(--desk-line);
+    border-radius: 999px;
+    padding: 0.12rem 0.5rem;
+}
 .status {
     font-family: var(--mono);
     font-size: 0.7rem;
@@ -879,8 +891,8 @@ input[type='date'].field__input { font-family: var(--mono); font-size: 0.82rem; 
     .app--drawer .app__scrim { display: block; position: fixed; inset: 0; z-index: 85; background: rgba(10, 8, 6, 0.5); }
     .topbar__menu { display: block; }
     .resizer { display: none; }
-    .app__canvas { padding: 1rem 0.6rem 7rem; }
-    .page { border-radius: 0.3rem; }
+    .app__canvas { padding: 0.8rem 0.6rem 4rem; }
+    .page { border-radius: 0.3rem; min-height: 40vh; padding-bottom: 3rem; }
 }
 @media (prefers-reduced-motion: reduce) {
     * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

@@ -13,6 +13,7 @@ export interface ExperienceProps {
     resource: Resource
     onPatch: (p: Partial<Resource>) => void
     onEditTitle?: () => void // posts only: open the title/slug modal
+    editable?: boolean // posts only: view vs edit mode
 }
 
 export interface CollectionDef {

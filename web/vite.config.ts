@@ -7,6 +7,7 @@ export default defineConfig({
     plugins: [react()],
     server: {
         port: 4330,
+        host: true, // bind 0.0.0.0 so phones/other devices on the LAN can reach it
         proxy: {
             // API + the blog's site-relative assets (served from repo/public by
             // the Go service) so images like /posts/<slug>/x.svg resolve here.

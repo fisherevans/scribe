@@ -41,6 +41,7 @@ export default function App() {
     const [drawer, setDrawer] = useState(false)
     const [details, setDetails] = useState(false)
     const [themeOpen, setThemeOpen] = useState(false)
+    const [editMode, setEditMode] = useState(false) // posts open read-only; edit is explicit
     const [modal, setModal] = useState<{ open: boolean; mode: 'new' | 'edit' }>({ open: false, mode: 'new' })
     const [theme, setTheme] = useState<Theme>(loadTheme)
     const saveTimer = useRef<number | null>(null)
@@ -58,6 +59,21 @@ export default function App() {
 
     useEffect(() => {
         document.documentElement.style.setProperty('--rail-w', railW.current + 'rem')
+    }, [])
+
+    // Size the app to the *visual* viewport so the on-screen keyboard (iOS) just
+    // shrinks the editing area instead of leaving a dead buffer below the page.
+    useEffect(() => {
+        const vv = window.visualViewport
+        if (!vv) return
+        const update = () => document.documentElement.style.setProperty('--app-vh', `${vv.height}px`)
+        update()
+        vv.addEventListener('resize', update)
+        vv.addEventListener('scroll', update)
+        return () => {
+            vv.removeEventListener('resize', update)
+            vv.removeEventListener('scroll', update)
+        }
     }, [])
 
     useEffect(() => {
@@ -87,6 +103,7 @@ export default function App() {
             if (c && (COLLECTION_ORDER as string[]).includes(c)) {
                 setCollection(c)
                 if (slug) setSel((cur) => ({ ...cur, [c]: slug }))
+                setEditMode(false) // navigating opens read-only
             }
         }
         window.addEventListener('popstate', onNav)
@@ -169,6 +186,7 @@ export default function App() {
             setLists((cur) => ({ ...cur, posts: [saved, ...cur.posts] }))
             setSel((cur) => ({ ...cur, posts: uslug }))
             writeHash('posts', uslug)
+            setEditMode(true) // new post: go straight to editing
             setStatus('saved')
             setDrawer(false)
         },
@@ -246,6 +264,7 @@ export default function App() {
         (slug: string) => {
             setSel((cur) => ({ ...cur, [collection]: slug }))
             writeHash(collection, slug)
+            setEditMode(false)
             setStatus('idle')
             setDrawer(false)
         },
@@ -256,6 +275,7 @@ export default function App() {
         (c: CollectionName) => {
             setCollection(c)
             writeHash(c, sel[c])
+            setEditMode(false)
             setStatus('idle')
             setDetails(false)
         },
@@ -300,17 +320,25 @@ export default function App() {
                 <TopBar
                     resource={active}
                     showDetails={def.hasDetails}
+                    showEdit={def.name === 'posts'}
+                    editMode={editMode}
                     status={status}
                     promoting={promoting}
                     onMenu={() => setDrawer((d) => !d)}
                     onTheme={() => setThemeOpen(true)}
+                    onToggleEdit={() => setEditMode((m) => !m)}
                     onDetails={() => setDetails(true)}
                     onDelete={deleteActive}
                     onPromote={promote}
                 />
                 <div className={'app__canvas' + (collection === 'posts' ? '' : ' app__canvas--form')}>
                     {active ? (
-                        <Experience resource={active} onPatch={patch} onEditTitle={() => setModal({ open: true, mode: 'edit' })} />
+                        <Experience
+                            resource={active}
+                            onPatch={patch}
+                            onEditTitle={() => setModal({ open: true, mode: 'edit' })}
+                            editable={editMode}
+                        />
                     ) : (
                         <div className="empty">Nothing here yet. Press “{def.newLabel}”.</div>
                     )}

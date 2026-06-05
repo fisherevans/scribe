@@ -53,7 +53,7 @@ export function BubbleToolbar({ editor }: { editor: Editor }) {
             editor={editor}
             tippyOptions={{ duration: 120, onHidden: () => setLinkMode(false) }}
             shouldShow={({ editor, from, to }) =>
-                (from !== to || editor.isActive('link')) && !editor.isActive('codeBlock') && !editor.isActive('image')
+                editor.isEditable && (from !== to || editor.isActive('link')) && !editor.isActive('codeBlock') && !editor.isActive('image')
             }
         >
             {linkMode ? (

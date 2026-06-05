@@ -24,11 +24,12 @@ interface Props {
     slug: string
     title: string
     body: string // markdown
+    editable: boolean
     onEditTitle: () => void
     onBody: (markdown: string) => void
 }
 
-export function Editor({ slug, title, body, onEditTitle, onBody }: Props) {
+export function Editor({ slug, title, body, editable, onEditTitle, onBody }: Props) {
     const loadedSlug = useRef<string | null>(null)
     const [words, setWords] = useState(0)
     // Latest props for onCreate (which captures its closure once).
@@ -67,6 +68,7 @@ export function Editor({ slug, title, body, onEditTitle, onBody }: Props) {
         ],
         content: '',
         autofocus: false,
+        editable,
         editorProps: { attributes: { class: 'prose', spellcheck: 'true' } },
         // Load initial content once the view is attached - avoids a race where
         // setContent runs before the editor DOM exists (empty on deep-link).
@@ -89,6 +91,15 @@ export function Editor({ slug, title, body, onEditTitle, onBody }: Props) {
         () => (editor ? createMarkdownParser(editor.schema) : null),
         [editor],
     )
+
+    // Toggle read-only/editable; focus the body when entering edit mode.
+    // emitUpdate=false is critical: setEditable's default emit would fire
+    // onUpdate and autosave (silently rewriting the file just by opening edit).
+    useEffect(() => {
+        if (!editor) return
+        editor.setEditable(editable, false)
+        if (editable) editor.commands.focus()
+    }, [editor, editable])
 
     // Reload when switching to a different post (onCreate handles the first).
     useEffect(() => {
@@ -113,9 +124,11 @@ export function Editor({ slug, title, body, onEditTitle, onBody }: Props) {
         <article className="page">
             <header className="page__head">
                 <h1 className={'page__title-display' + (title ? '' : ' is-empty')}>{title || 'Untitled'}</h1>
-                <button className="page__edit" type="button" onClick={onEditTitle} title="edit title & slug">
-                    ✎ edit
-                </button>
+                {editable && (
+                    <button className="page__edit" type="button" onClick={onEditTitle} title="edit title & slug">
+                        ✎ title
+                    </button>
+                )}
             </header>
             <EditorContent editor={editor} className="page__body" />
             <footer className="page__meta">

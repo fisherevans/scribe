@@ -5,10 +5,13 @@ export type SaveStatus = 'idle' | 'saving' | 'saved' | 'edited'
 interface Props {
     resource: Resource | null
     showDetails: boolean
+    showEdit: boolean
+    editMode: boolean
     status: SaveStatus
     promoting: boolean
     onMenu: () => void
     onTheme: () => void
+    onToggleEdit: () => void
     onDetails: () => void
     onDelete: () => void
     onPromote: () => void
@@ -21,7 +24,7 @@ const STATUS_LABEL: Record<SaveStatus, string> = {
     edited: 'unsaved edits',
 }
 
-export function TopBar({ resource, showDetails, status, promoting, onMenu, onTheme, onDetails, onDelete, onPromote }: Props) {
+export function TopBar({ resource, showDetails, showEdit, editMode, status, promoting, onMenu, onTheme, onToggleEdit, onDetails, onDelete, onPromote }: Props) {
     const canPromote = resource && (resource.state === 'staged' || resource.dirty || status === 'edited')
     return (
         <header className="topbar">
@@ -29,9 +32,21 @@ export function TopBar({ resource, showDetails, status, promoting, onMenu, onThe
                 ≡
             </button>
             <div className="topbar__status">
+                {showEdit && !editMode && <span className="viewbadge">viewing</span>}
                 <span className={'status status--' + status}>{STATUS_LABEL[status]}</span>
             </div>
             <div className="topbar__actions">
+                {showEdit && (
+                    <button
+                        className={'btn ' + (editMode ? 'btn--promote' : 'btn--ghost')}
+                        onClick={onToggleEdit}
+                        type="button"
+                        disabled={!resource}
+                        title={editMode ? 'done editing (read-only)' : 'edit this post'}
+                    >
+                        {editMode ? '✓ done' : '✎ edit'}
+                    </button>
+                )}
                 <button className="btn btn--ghost" onClick={onTheme} type="button" title="theme">
                     aA
                 </button>
