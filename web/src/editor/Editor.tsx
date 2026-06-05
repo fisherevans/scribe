@@ -23,15 +23,26 @@ interface Props {
 export function Editor({ slug, title, body, onTitle, onBody }: Props) {
     const titleRef = useRef<HTMLTextAreaElement>(null)
     const loadedSlug = useRef<string | null>(null)
+    // Latest props for onCreate (which captures its closure once).
+    const bodyRef = useRef(body)
+    bodyRef.current = body
+    const slugRef = useRef(slug)
+    slugRef.current = slug
 
     const editor = useEditor({
         extensions: [
             StarterKit.configure({ heading: { levels: [2, 3, 4] }, codeBlock: false }),
             CodeBlock,
             Placeholder.configure({
-                placeholder: ({ node }) =>
-                    node.type.name === 'heading' ? 'Section title' : "Write. Press '/' for blocks.",
-                includeChildren: true,
+                // Only the top-level paragraph/heading get a placeholder; without
+                // this, includeChildren painted it inside empty callouts and code
+                // blocks too.
+                includeChildren: false,
+                placeholder: ({ node }) => {
+                    if (node.type.name === 'heading') return 'Section title'
+                    if (node.type.name === 'paragraph') return "Write. Press '/' for blocks."
+                    return ''
+                },
             }),
             // Image is inline to match markdown semantics (a lone image is a
             // paragraph containing an inline image), which keeps block
@@ -46,21 +57,26 @@ export function Editor({ slug, title, body, onTitle, onBody }: Props) {
         content: '',
         autofocus: false,
         editorProps: { attributes: { class: 'prose', spellcheck: 'true' } },
+        // Load initial content once the view is attached - avoids a race where
+        // setContent runs before the editor DOM exists (empty on deep-link).
+        onCreate: ({ editor }) => {
+            const parser = createMarkdownParser(editor.schema)
+            editor.commands.setContent(parser.parse(bodyRef.current || '').toJSON(), false)
+            loadedSlug.current = slugRef.current
+        },
         // Markdown is the source of truth; serialize the doc on every change.
         onUpdate: ({ editor }) => onBody(serializeMarkdown(editor.state.doc)),
     })
 
-    // Parser is bound to the editor's schema (built once the editor exists).
     const parser = useMemo<MarkdownParser | null>(
         () => (editor ? createMarkdownParser(editor.schema) : null),
         [editor],
     )
 
-    // Load (parse markdown -> doc) when the selected post changes.
+    // Reload when switching to a different post (onCreate handles the first).
     useEffect(() => {
         if (!editor || !parser || loadedSlug.current === slug) return
-        const doc = parser.parse(body || '')
-        editor.commands.setContent(doc.toJSON(), false)
+        editor.commands.setContent(parser.parse(body || '').toJSON(), false)
         loadedSlug.current = slug
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [slug, editor, parser, body])
