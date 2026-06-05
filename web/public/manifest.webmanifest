@@ -1,0 +1,10 @@
+{
+  "name": "scribe",
+  "short_name": "scribe",
+  "description": "Writing-first editor for log.fisher.sh",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1c1714",
+  "theme_color": "#1c1714",
+  "icons": []
+}

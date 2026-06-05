@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/mock.ts","./src/types.ts","./src/components/feed.tsx","./src/components/publishsheet.tsx","./src/components/topbar.tsx","./src/editor/editor.tsx","./src/editor/rawhtmlnode.tsx","./src/editor/slashcommand.tsx"],"errors":true,"version":"5.9.3"}
