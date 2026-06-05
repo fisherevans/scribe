@@ -39,15 +39,25 @@ control.
 ## Architecture
 
 ```
-PWA (React + Vite + TipTap)         Go service (always-on, Fly.io / VPS)
-  document-first editor                 +-- git checkout of the blog repo   <- staging working tree
-  slash commands                        +-- SQLite                          <- notes / app-side metadata
+PWA (React + Vite + TipTap)         scribe Go service (k3s pod, single replica)
+  document-first editor                 +-- git checkout of the blog repo   <- staging working tree (NFS PVC)
+  slash commands                        +-- SQLite                          <- notes / app-side metadata (NFS PVC)
   opaque raw-HTML embed node            +-- HTTP/JSON API
   source-mode toggle (CodeMirror)       +-- markdown <-> editor-doc pipeline
-  installable, mobile-first             +-- git ops (commit / merge / push)
+  installable, mobile-first             +-- git ops (commit / merge / push -> origin/main)
         |                                       |
         +---------------- HTTP/JSON ------------+
+
+Browser -> Cloudflare edge -> Cloudflare Tunnel -> caddy (forward-auth) -> scribe-svc
+                                                         |
+                                                   auth.fisher.sh (login)
 ```
+
+Runs on the Nottingham homelab k3s cluster, exposed at `scribe.fisher.sh` via
+Cloudflare Tunnel. The cluster's existing Go auth service fronts every app
+through caddy forward-auth, so scribe never sees an unauthenticated request and
+does not implement its own login. Single user, so platform gating is enough;
+scribe trusts the authenticated request.
 
 ### Staging vs production (the mirror model)
 
@@ -78,8 +88,45 @@ exactly like today. "Draft post" = a file sitting in staging, not yet promoted.
 The staging/promote model is literally a git working tree with a merge step.
 Running a real checkout on a real filesystem gives merge and conflict handling
 for free instead of reimplementing 3-way merge over the GitHub API. It also
-matches the Go default stack, and keeps staging as real files (point Typora at
-the checkout later if desired). Cost: one small always-on host to manage.
+matches the Go default stack, and keeps staging as real files. The homelab k3s
+cluster is always-on already, so there is no extra host to manage.
+
+Implementation notes: shell out to the real `git` binary (in the runtime image)
+rather than go-git, so merges/conflicts use real git semantics. Use
+`modernc.org/sqlite` (pure Go) for the metadata store so the CGO-free
+`CGO_ENABLED=0` build matches the cluster convention.
+
+## Deployment (Nottingham k3s)
+
+Follows the `nottingham-cloud/k3s` project convention. `rsvp` is the direct
+analog: a single-replica Go + SQLite app on an NFS PVC behind the auth service.
+
+Split of responsibilities:
+
+- **This repo (`scribe`):** app source + `Dockerfile`. Image published to
+  `ghcr.io/fisherevans/scribe:vX.Y.Z` (`docker build --platform linux/amd64`,
+  then `docker push`; namespace seeds the shared `ghcr-secret`).
+- **`nottingham-cloud/k3s/projects/scribe/`:** kustomize manifests (namespace,
+  deployment, service, pvc), scaffolded via `make new-project PROJECT=scribe`.
+
+Deployment specifics:
+
+- **Single replica, `strategy: Recreate`.** SQLite and a git working tree both
+  want one writer; never run two pods. Identical constraint to rsvp.
+- **One NFS PVC mounted at `/data`** holds both the staging git checkout and
+  the SQLite metadata DB. NFS + SQLite is already proven on this cluster (rsvp).
+- **Secrets (`scribe-secrets`):** a GitHub credential (deploy key or PAT) so the
+  pod can fetch `origin/main` and push on promote. Plus any session/base-URL
+  config. Bitwarden-backed `configure-*` target pattern.
+- **Health endpoint `/api/health`** to match the cluster's probe convention
+  (liveness + readiness), not `/healthz`.
+- **Expose:** add a `handle` block for `scribe.fisher.sh` to
+  `infra/auth/caddy-config.yaml`, `make deploy-auth`, then
+  `make route-add HOSTNAME=scribe.fisher.sh SERVICE=http://caddy.auth.svc.cluster.local:80`.
+
+Promote pushes to the blog repo's `main`, which triggers the existing
+`log.fisher.sh` deploy pipeline. scribe does not deploy the blog itself; it just
+moves commits.
 
 ## Editor pipeline (the engineering risk)
 
@@ -152,7 +199,10 @@ into frontmatter (pollutes files, fights the schema).
 - Metadata deferred to a publish sheet; `date` auto, `hasVideo` auto-derived,
   `updatedDate` auto on re-promote.
 - Autosave -> staging. Promote -> commit + push -> existing deploy fires.
-- Single user. Auth = passkey or shared secret in front of the service.
+- Single user. Auth handled by the cluster's forward-auth (`auth.fisher.sh`);
+  scribe implements none of its own.
+- Deploy to Nottingham k3s as a `make new-project` app at `scribe.fisher.sh`
+  (see Deployment).
 
 ### Phase 1 - daily-driver gaps
 - Notes sidecar (private app-side metadata).
