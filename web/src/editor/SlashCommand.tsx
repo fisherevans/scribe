@@ -15,19 +15,25 @@ interface Item {
     title: string
     hint: string
     glyph: string
+    group: string
     run: (editor: Editor, range: Range) => void
 }
 
+// Grouped like Pages CMS's /commands - "blocks" are the prose primitives,
+// "custom & embeds" are the structured/opaque content types. New custom
+// content (a provider embed, a new template) is one more entry here.
 const ITEMS: Item[] = [
-    { title: 'Heading', hint: 'Section title', glyph: 'H', run: (e, r) => e.chain().focus().deleteRange(r).setNode('heading', { level: 2 }).run() },
-    { title: 'Subheading', hint: 'Smaller title', glyph: 'h', run: (e, r) => e.chain().focus().deleteRange(r).setNode('heading', { level: 3 }).run() },
-    { title: 'Text', hint: 'Plain paragraph', glyph: '¶', run: (e, r) => e.chain().focus().deleteRange(r).setNode('paragraph').run() },
-    { title: 'Bulleted list', hint: 'Unordered', glyph: '•', run: (e, r) => e.chain().focus().deleteRange(r).toggleBulletList().run() },
-    { title: 'Numbered list', hint: 'Ordered', glyph: '1.', run: (e, r) => e.chain().focus().deleteRange(r).toggleOrderedList().run() },
-    { title: 'Quote', hint: 'Block quote', glyph: '“', run: (e, r) => e.chain().focus().deleteRange(r).toggleBlockquote().run() },
-    { title: 'Divider', hint: 'Horizontal rule', glyph: '—', run: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run() },
-    { title: 'Code block', hint: 'Monospaced', glyph: '{}', run: (e, r) => e.chain().focus().deleteRange(r).toggleCodeBlock().run() },
-    { title: 'Embed', hint: 'Raw HTML, preserved verbatim', glyph: '</>', run: (e, r) => e.chain().focus().deleteRange(r).insertRawHtml('').run() },
+    { group: 'Blocks', title: 'Heading', hint: 'Section title', glyph: 'H', run: (e, r) => e.chain().focus().deleteRange(r).setNode('heading', { level: 2 }).run() },
+    { group: 'Blocks', title: 'Subheading', hint: 'Smaller title', glyph: 'h', run: (e, r) => e.chain().focus().deleteRange(r).setNode('heading', { level: 3 }).run() },
+    { group: 'Blocks', title: 'Text', hint: 'Plain paragraph', glyph: '¶', run: (e, r) => e.chain().focus().deleteRange(r).setNode('paragraph').run() },
+    { group: 'Blocks', title: 'Bulleted list', hint: 'Unordered', glyph: '•', run: (e, r) => e.chain().focus().deleteRange(r).toggleBulletList().run() },
+    { group: 'Blocks', title: 'Numbered list', hint: 'Ordered', glyph: '1.', run: (e, r) => e.chain().focus().deleteRange(r).toggleOrderedList().run() },
+    { group: 'Blocks', title: 'Quote', hint: 'Block quote', glyph: '“', run: (e, r) => e.chain().focus().deleteRange(r).toggleBlockquote().run() },
+    { group: 'Blocks', title: 'Divider', hint: 'Horizontal rule', glyph: '—', run: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run() },
+    { group: 'Blocks', title: 'Code block', hint: 'Monospaced', glyph: '{}', run: (e, r) => e.chain().focus().deleteRange(r).toggleCodeBlock().run() },
+    { group: 'Custom & embeds', title: 'Figure', hint: 'Image with caption', glyph: '🖼', run: (e, r) => e.chain().focus().deleteRange(r).insertFigure().run() },
+    { group: 'Custom & embeds', title: 'Callout', hint: 'Note · idea · heads-up', glyph: '✷', run: (e, r) => e.chain().focus().deleteRange(r).insertCallout('info').run() },
+    { group: 'Custom & embeds', title: 'Raw HTML', hint: 'Opaque, preserved verbatim', glyph: '</>', run: (e, r) => e.chain().focus().deleteRange(r).insertRawHtml('').run() },
 ]
 
 interface MenuHandle {
@@ -64,25 +70,29 @@ const Menu = forwardRef<MenuHandle, MenuProps>(({ items, command }, ref) => {
 
     return (
         <div className="slash">
-            <div className="slash__caption">insert</div>
-            {items.map((item, i) => (
-                <button
-                    key={item.title}
-                    type="button"
-                    className={'slash__item' + (i === active ? ' is-active' : '')}
-                    onMouseEnter={() => setActive(i)}
-                    onMouseDown={(e) => {
-                        e.preventDefault()
-                        command(item)
-                    }}
-                >
-                    <span className="slash__glyph">{item.glyph}</span>
-                    <span className="slash__text">
-                        <span className="slash__title">{item.title}</span>
-                        <span className="slash__hint">{item.hint}</span>
-                    </span>
-                </button>
-            ))}
+            {items.map((item, i) => {
+                const newGroup = i === 0 || items[i - 1].group !== item.group
+                return (
+                    <div key={item.title}>
+                        {newGroup && <div className="slash__caption">{item.group}</div>}
+                        <button
+                            type="button"
+                            className={'slash__item' + (i === active ? ' is-active' : '')}
+                            onMouseEnter={() => setActive(i)}
+                            onMouseDown={(e) => {
+                                e.preventDefault()
+                                command(item)
+                            }}
+                        >
+                            <span className="slash__glyph">{item.glyph}</span>
+                            <span className="slash__text">
+                                <span className="slash__title">{item.title}</span>
+                                <span className="slash__hint">{item.hint}</span>
+                            </span>
+                        </button>
+                    </div>
+                )
+            })}
         </div>
     )
 })
@@ -115,7 +125,11 @@ export const SlashCommand = Extension.create({
             startOfLine: false,
             command: ({ editor, range, props }) => (props as Item).run(editor, range),
             items: ({ query }) =>
-                ITEMS.filter((i) => i.title.toLowerCase().includes(query.toLowerCase())).slice(0, 9),
+                ITEMS.filter(
+                    (i) =>
+                        i.title.toLowerCase().includes(query.toLowerCase()) ||
+                        i.group.toLowerCase().includes(query.toLowerCase()),
+                ),
             render: () => {
                 let renderer: ReactRenderer<MenuHandle, MenuProps> | null = null
                 let getRect: () => DOMRect | null = () => null

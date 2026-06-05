@@ -3,6 +3,8 @@ import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { useEffect, useRef } from 'react'
 import { RawHtml } from './RawHtmlNode'
+import { Callout } from './CalloutNode'
+import { Figure } from './FigureNode'
 import { SlashCommand } from './SlashCommand'
 
 interface Props {
@@ -27,6 +29,8 @@ export function Editor({ slug, title, body, onTitle, onBody }: Props) {
                 includeChildren: true,
             }),
             RawHtml,
+            Callout,
+            Figure,
             SlashCommand,
         ],
         content: body,

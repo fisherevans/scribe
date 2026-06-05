@@ -1,107 +1,143 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './mock'
-import type { Post } from './types'
-import { Editor } from './editor/Editor'
+import type { CollectionName, Post, Resource } from './types'
+import { COLLECTIONS, COLLECTION_ORDER } from './collections'
+import { CollectionRail } from './components/CollectionRail'
 import { Feed } from './components/Feed'
 import { TopBar, type SaveStatus } from './components/TopBar'
 import { PublishSheet } from './components/PublishSheet'
 
+type ByCollection<T> = Record<CollectionName, T>
+const emptyLists: ByCollection<Resource[]> = { posts: [], tags: [], snippets: [] }
+const emptySel: ByCollection<string | null> = { posts: null, tags: null, snippets: null }
+
 export default function App() {
-    const [posts, setPosts] = useState<Post[]>([])
-    const [activeSlug, setActiveSlug] = useState<string | null>(null)
+    const [collection, setCollection] = useState<CollectionName>('posts')
+    const [lists, setLists] = useState<ByCollection<Resource[]>>(emptyLists)
+    const [sel, setSel] = useState<ByCollection<string | null>>(emptySel)
     const [status, setStatus] = useState<SaveStatus>('idle')
     const [promoting, setPromoting] = useState(false)
     const [drawer, setDrawer] = useState(false)
     const [details, setDetails] = useState(false)
     const saveTimer = useRef<number | null>(null)
 
-    const active = posts.find((p) => p.slug === activeSlug) ?? null
+    const def = COLLECTIONS[collection]
+    const items = lists[collection]
+    const activeSlug = sel[collection]
+    const active = items.find((r) => r.slug === activeSlug) ?? null
 
     useEffect(() => {
-        api.list().then((ps) => {
-            setPosts(ps)
-            setActiveSlug(ps[0]?.slug ?? null)
+        Promise.all(COLLECTION_ORDER.map((c) => api.list(c))).then((results) => {
+            const next = { ...emptyLists }
+            const firstSel = { ...emptySel }
+            COLLECTION_ORDER.forEach((c, i) => {
+                next[c] = results[i]
+                firstSel[c] = results[i][0]?.slug ?? null
+            })
+            setLists(next)
+            setSel(firstSel)
         })
     }, [])
 
-    // Debounced autosave -> staging. Edits mark the buffer dirty immediately,
-    // then settle to "staged" once the (mock) commit lands.
-    const queueSave = useCallback((slug: string, patch: Partial<Post>) => {
-        setStatus('edited')
-        if (saveTimer.current) window.clearTimeout(saveTimer.current)
-        saveTimer.current = window.setTimeout(async () => {
-            setStatus('saving')
-            const next = await api.save(slug, { ...patch, state: 'staged' })
-            setPosts((cur) => cur.map((p) => (p.slug === slug ? next : p)))
-            setStatus('saved')
-        }, 650)
-    }, [])
+    // Debounced autosave -> staging, scoped to the active collection.
+    const queueSave = useCallback(
+        (c: CollectionName, slug: string, patch: Partial<Resource>) => {
+            setStatus('edited')
+            if (saveTimer.current) window.clearTimeout(saveTimer.current)
+            saveTimer.current = window.setTimeout(async () => {
+                setStatus('saving')
+                const next = await api.save(c, slug, { ...patch, state: 'staged' } as Partial<Resource>)
+                setLists((cur) => ({ ...cur, [c]: cur[c].map((r) => (r.slug === slug ? next : r)) }))
+                setStatus('saved')
+            }, 650)
+        },
+        [],
+    )
 
     const patch = useCallback(
-        (p: Partial<Post>) => {
+        (p: Partial<Resource>) => {
             if (!active) return
             const slug = active.slug
-            setPosts((cur) => cur.map((x) => (x.slug === slug ? { ...x, ...p, dirty: true } : x)))
-            queueSave(slug, p)
+            setLists((cur) => ({
+                ...cur,
+                [collection]: cur[collection].map((r) => (r.slug === slug ? ({ ...r, ...p, dirty: true } as Resource) : r)),
+            }))
+            queueSave(collection, slug, p)
         },
-        [active, queueSave],
+        [active, collection, queueSave],
     )
 
     const promote = useCallback(async () => {
         if (!active) return
         setPromoting(true)
-        const next = await api.promote(active.slug)
-        setPosts((cur) => cur.map((p) => (p.slug === next.slug ? next : p)))
+        const next = await api.promote(collection, active.slug)
+        setLists((cur) => ({ ...cur, [collection]: cur[collection].map((r) => (r.slug === next.slug ? next : r)) }))
         setPromoting(false)
         setStatus('saved')
-    }, [active])
+    }, [active, collection])
 
     const create = useCallback(async () => {
-        const fresh = await api.create()
-        setPosts((cur) => [fresh, ...cur])
-        setActiveSlug(fresh.slug)
+        const fresh = await api.create(collection)
+        setLists((cur) => ({ ...cur, [collection]: [fresh, ...cur[collection]] }))
+        setSel((cur) => ({ ...cur, [collection]: fresh.slug }))
         setStatus('idle')
         setDrawer(false)
+    }, [collection])
+
+    const select = useCallback(
+        (slug: string) => {
+            setSel((cur) => ({ ...cur, [collection]: slug }))
+            setStatus('idle')
+            setDrawer(false)
+        },
+        [collection],
+    )
+
+    const switchCollection = useCallback((c: CollectionName) => {
+        setCollection(c)
+        setStatus('idle')
+        setDetails(false)
     }, [])
 
-    const select = useCallback((slug: string) => {
-        setActiveSlug(slug)
-        setStatus('idle')
-        setDrawer(false)
-    }, [])
+    const Experience = def.Experience
 
     return (
         <div className={'app' + (drawer ? ' app--drawer' : '')}>
-            <div className="app__rail">
-                <Feed posts={posts} activeSlug={activeSlug} onSelect={select} onNew={create} />
+            <div className="app__nav">
+                <CollectionRail active={collection} onSelect={switchCollection} />
+                <div className="app__feed">
+                    <Feed def={def} items={items} activeSlug={activeSlug} onSelect={select} onNew={create} />
+                </div>
             </div>
             <div className="app__scrim" onClick={() => setDrawer(false)} />
 
             <main className="app__main">
                 <TopBar
-                    post={active}
+                    resource={active}
+                    showDetails={def.hasDetails}
                     status={status}
                     promoting={promoting}
                     onMenu={() => setDrawer((d) => !d)}
                     onDetails={() => setDetails(true)}
                     onPromote={promote}
                 />
-                <div className="app__canvas">
+                <div className={'app__canvas' + (collection === 'posts' ? '' : ' app__canvas--form')}>
                     {active ? (
-                        <Editor
-                            slug={active.slug}
-                            title={active.title}
-                            body={active.body}
-                            onTitle={(title) => patch({ title })}
-                            onBody={(body) => patch({ body })}
-                        />
+                        <Experience resource={active} onPatch={patch} />
                     ) : (
-                        <div className="empty">Pick a post, or press “+ write”.</div>
+                        <div className="empty">Nothing here yet. Press “{def.newLabel}”.</div>
                     )}
                 </div>
             </main>
 
-            <PublishSheet post={active} open={details} onClose={() => setDetails(false)} onPatch={patch} />
+            {def.hasDetails && (
+                <PublishSheet
+                    post={active && active.kind === 'posts' ? (active as Post) : null}
+                    open={details}
+                    onClose={() => setDetails(false)}
+                    onPatch={patch as (p: Partial<Post>) => void}
+                />
+            )}
         </div>
     )
 }

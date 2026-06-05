@@ -46,19 +46,62 @@ button { font-family: inherit; cursor: pointer; }
 ::selection { background: var(--brass-soft); }
 
 /* ---- App shell ---------------------------------------------------------- */
-.app {
-    display: grid;
-    grid-template-columns: var(--rail-w) 1fr;
-    height: 100%;
+.app { display: flex; height: 100%; }
+.app__nav {
+    display: flex;
+    flex: none;
+    width: calc(3.6rem + var(--rail-w));
+    min-height: 0;
 }
-.app__rail {
+.app__feed {
+    width: var(--rail-w);
     border-right: 1px solid var(--desk-line);
     background: linear-gradient(180deg, var(--desk-2), var(--desk));
-    min-height: 0;
     overflow-y: auto;
 }
 .app__scrim { display: none; }
-.app__main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.app__main { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+
+/* ---- Collection rail (resource-type switcher) -------------------------- */
+.crail {
+    flex: none;
+    width: 3.6rem;
+    background: var(--desk);
+    border-right: 1px solid var(--desk-line);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.7rem 0;
+}
+.crail__mark {
+    font-family: var(--serif-display);
+    font-weight: 600;
+    font-size: 1.3rem;
+    color: var(--brass);
+    width: 2.2rem;
+    height: 2.2rem;
+    display: grid;
+    place-items: center;
+    margin-bottom: 0.6rem;
+}
+.crail__btn {
+    width: 3rem;
+    background: none;
+    border: none;
+    border-radius: 0.55rem;
+    padding: 0.45rem 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    color: var(--ink-faint);
+    transition: background 0.15s, color 0.15s;
+}
+.crail__btn:hover { color: var(--ink-mute); background: var(--desk-3); }
+.crail__btn.is-active { color: var(--brass); background: var(--brass-soft); }
+.crail__glyph { font-size: 1.1rem; line-height: 1; }
+.crail__label { font-family: var(--mono); font-size: 0.52rem; text-transform: uppercase; letter-spacing: 0.08em; }
 .app__canvas {
     flex: 1;
     overflow-y: auto;
@@ -77,7 +120,7 @@ button { font-family: inherit; cursor: pointer; }
     justify-content: space-between;
     padding: 0.25rem 0.5rem 1rem;
 }
-.feed__brand {
+.feed__title {
     font-family: var(--serif-display);
     font-weight: 560;
     font-size: 1.4rem;
@@ -335,6 +378,120 @@ button { font-family: inherit; cursor: pointer; }
 }
 .embed__source::placeholder { color: #7a6c5a; }
 
+/* ---- Callout (structured custom content) ------------------------------- */
+.callout {
+    display: flex;
+    gap: 0.85rem;
+    border-radius: 0.55rem;
+    padding: 0.85rem 1rem 0.85rem 0.85rem;
+    border: 1px solid var(--paper-line);
+    background: var(--paper-2);
+}
+.callout[data-tone='info'] { border-left: 3px solid var(--brass); }
+.callout[data-tone='idea'] { border-left: 3px solid var(--sage); }
+.callout[data-tone='warn'] { border-left: 3px solid var(--rose); }
+.callout__rail { flex: none; display: flex; flex-direction: column; align-items: center; gap: 0.4rem; }
+.callout__glyph {
+    width: 1.5rem;
+    height: 1.5rem;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--paper);
+}
+.callout[data-tone='info'] .callout__glyph { background: var(--brass); }
+.callout[data-tone='idea'] .callout__glyph { background: var(--sage); }
+.callout[data-tone='warn'] .callout__glyph { background: var(--rose); }
+.callout__tones { display: flex; flex-direction: column; gap: 0.15rem; opacity: 0; transition: opacity 0.15s; }
+.callout:hover .callout__tones { opacity: 1; }
+.callout__tone { width: 1.3rem; height: 1.3rem; border: 1px solid var(--paper-line); background: var(--paper); border-radius: 5px; font-size: 0.7rem; color: var(--ink-soft); display: grid; place-items: center; }
+.callout__tone.is-active { border-color: var(--brass-deep); color: var(--ink); }
+.callout__body { flex: 1; }
+.callout__body > *:last-child { margin-bottom: 0; }
+
+/* ---- Figure (image + caption) ------------------------------------------ */
+.figure { margin: 0; }
+.figure__img { display: block; max-width: 100%; border-radius: 0.4rem; }
+.figure__drop {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 1.6rem;
+    border: 1.5px dashed var(--paper-line);
+    border-radius: 0.5rem;
+    background: var(--paper-2);
+}
+.figure__dropglyph { font-size: 1.6rem; opacity: 0.5; filter: grayscale(0.4); }
+.figure__url {
+    width: min(28rem, 100%);
+    text-align: center;
+    background: var(--paper);
+    border: 1px solid var(--paper-line);
+    border-radius: 0.4rem;
+    padding: 0.5rem 0.7rem;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--ink);
+    outline: none;
+}
+.figure__captionrow { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.5rem; }
+.figure__caption {
+    flex: 1;
+    border: none;
+    background: none;
+    outline: none;
+    text-align: center;
+    font-family: var(--serif-body);
+    font-style: italic;
+    font-size: 0.92rem;
+    color: var(--ink-soft);
+}
+.figure__caption::placeholder { color: var(--ink-faintest); }
+.figure__change { font-family: var(--mono); font-size: 0.62rem; color: var(--ink-faintest); background: none; border: 1px solid var(--paper-line); border-radius: 5px; padding: 0.15rem 0.4rem; }
+
+/* ---- Form-card experiences (tags / generic) ---------------------------- */
+.app__canvas--form { padding-top: clamp(1.5rem, 6vh, 4rem); }
+.formcard {
+    max-width: 34rem;
+    margin: 0 auto;
+    background: linear-gradient(180deg, var(--paper), var(--paper-2));
+    color: var(--ink);
+    border-radius: 0.5rem;
+    padding: clamp(1.6rem, 4vw, 2.6rem);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 24px 50px -28px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.formcard__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 1.6rem;
+    padding-bottom: 0.9rem;
+    border-bottom: 1px solid var(--paper-line);
+}
+.formcard__kicker { font-family: var(--mono); font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.16em; color: var(--brass-deep); }
+.formcard__slug { font-family: var(--mono); font-size: 0.72rem; color: var(--ink-faintest); }
+.ffield { display: block; margin-bottom: 1.3rem; }
+.ffield:last-child { margin-bottom: 0; }
+.ffield__label { display: block; font-family: var(--mono); font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-soft); margin-bottom: 0.5rem; }
+.ffield__input {
+    width: 100%;
+    background: var(--paper);
+    border: 1px solid var(--paper-line);
+    border-radius: 0.45rem;
+    padding: 0.6rem 0.7rem;
+    font-family: var(--serif-body);
+    font-size: 1.02rem;
+    color: var(--ink);
+    outline: none;
+    resize: vertical;
+    transition: border-color 0.15s;
+}
+.ffield__input:focus { border-color: var(--brass); }
+.ffield__input--lg { font-family: var(--serif-display); font-size: 1.5rem; font-weight: 520; }
+
 /* ---- Slash menu --------------------------------------------------------- */
 .slash__anchor { position: fixed; z-index: 60; }
 .slash {
@@ -453,18 +610,18 @@ input[type='date'].field__input { font-family: var(--mono); font-size: 0.82rem; 
 
 /* ---- Mobile ------------------------------------------------------------- */
 @media (max-width: 820px) {
-    .app { grid-template-columns: 1fr; }
-    .app__rail {
+    .app__nav {
         position: fixed;
         z-index: 90;
         top: 0;
         left: 0;
         bottom: 0;
-        width: min(20rem, 84vw);
+        width: calc(3.6rem + min(18rem, 74vw));
         transform: translateX(-102%);
         transition: transform 0.24s ease;
     }
-    .app--drawer .app__rail { transform: translateX(0); }
+    .app__feed { width: min(18rem, 74vw); }
+    .app--drawer .app__nav { transform: translateX(0); }
     .app--drawer .app__scrim { display: block; position: fixed; inset: 0; z-index: 85; background: rgba(10, 8, 6, 0.5); }
     .topbar__menu { display: block; }
     .app__canvas { padding: 1rem 0.6rem 7rem; }

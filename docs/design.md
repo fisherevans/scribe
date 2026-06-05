@@ -209,6 +209,25 @@ output are the parts that need control. Consider `novel` (Notion-style TipTap
 editor, React, slash commands) as a UI starting point, swapping its persistence
 for markdown round-trip.
 
+### Custom content: structured vs opaque
+
+The `/` menu inserts two kinds of custom block, and the distinction drives how
+each round-trips to markdown:
+
+- **Structured blocks** (e.g. Callout `div[data-callout][data-tone]`, Figure
+  `figure > img + figcaption`). The editor understands their shape and they
+  serialize to a known, stable HTML/markdown form the blog can style. New
+  "templates/plugins" are this kind: a node with defined attributes + a
+  serialize rule. Editable inline.
+- **Opaque blocks** (RawHTML). The editor never parses them; the source string
+  round-trips verbatim. The escape hatch for arbitrary hand-written or
+  generated HTML (iframes, SVG, one-off custom elements).
+
+Prototype status: both implemented as TipTap nodes
+(`web/src/editor/{CalloutNode,FigureNode,RawHtmlNode}.tsx`) with React node
+views. The markdown serialization rules for the structured ones are still
+pending (part of the round-trip pipeline above); opaque is already verbatim.
+
 ## Generic core, bespoke experiences
 
 scribe stays generic like Pages CMS, with hooks for known types:
@@ -223,6 +242,13 @@ scribe stays generic like Pages CMS, with hooks for known types:
 
   Adding a bespoke experience later = registering a component, not rewriting the
   core.
+
+Prototype status: the registry is implemented in `web/src/collections.tsx`. Each
+collection maps to an `Experience` component (`posts` -> `PostExperience`,
+`tags` -> `TagExperience`) plus feed renderers; collections without a bespoke
+component fall back to `GenericExperience`, driven by a field schema (the
+`snippets` collection demonstrates this path). A far-left rail switches between
+collections.
 
 ### Extension config: sidecar, not inline
 

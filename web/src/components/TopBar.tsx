@@ -1,9 +1,10 @@
-import type { Post } from '../types'
+import type { Resource } from '../types'
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'edited'
 
 interface Props {
-    post: Post | null
+    resource: Resource | null
+    showDetails: boolean
     status: SaveStatus
     promoting: boolean
     onMenu: () => void
@@ -18,27 +19,29 @@ const STATUS_LABEL: Record<SaveStatus, string> = {
     edited: 'unsaved edits',
 }
 
-export function TopBar({ post, status, promoting, onMenu, onDetails, onPromote }: Props) {
-    const canPromote = post && (post.state === 'staged' || post.dirty || status === 'edited')
+export function TopBar({ resource, showDetails, status, promoting, onMenu, onDetails, onPromote }: Props) {
+    const canPromote = resource && (resource.state === 'staged' || resource.dirty || status === 'edited')
     return (
         <header className="topbar">
-            <button className="topbar__menu" onClick={onMenu} type="button" aria-label="posts">
+            <button className="topbar__menu" onClick={onMenu} type="button" aria-label="browse">
                 ≡
             </button>
             <div className="topbar__status">
                 <span className={'status status--' + status}>{STATUS_LABEL[status]}</span>
             </div>
             <div className="topbar__actions">
-                <button className="btn btn--ghost" onClick={onDetails} type="button" disabled={!post}>
-                    details
-                </button>
+                {showDetails && (
+                    <button className="btn btn--ghost" onClick={onDetails} type="button" disabled={!resource}>
+                        details
+                    </button>
+                )}
                 <button
                     className="btn btn--promote"
                     onClick={onPromote}
                     type="button"
                     disabled={!canPromote || promoting}
                 >
-                    {promoting ? 'promoting…' : post?.state === 'promoted' && !canPromote ? 'live' : 'promote'}
+                    {promoting ? 'promoting…' : resource?.state === 'promoted' && !canPromote ? 'live' : 'promote'}
                 </button>
             </div>
         </header>
