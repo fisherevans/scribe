@@ -18,6 +18,18 @@ const loadRail = () => {
     return Number.isFinite(v) ? v : 19
 }
 
+// Hash routing: #/<collection>/<slug>. Hash (not path) so it never collides
+// with the /posts and /assets proxies, and reloads/bookmarks just work.
+function parseHash(): { collection?: CollectionName; slug?: string } {
+    const m = location.hash.match(/^#\/([a-z]+)(?:\/([^/]+))?/)
+    if (!m) return {}
+    return { collection: m[1] as CollectionName, slug: m[2] ? decodeURIComponent(m[2]) : undefined }
+}
+function writeHash(c: CollectionName, slug: string | null, replace = false) {
+    const h = `#/${c}${slug ? '/' + encodeURIComponent(slug) : ''}`
+    if (location.hash !== h) history[replace ? 'replaceState' : 'pushState'](null, '', h)
+}
+
 export default function App() {
     const [collection, setCollection] = useState<CollectionName>('posts')
     const [lists, setLists] = useState<ByCollection<Resource[]>>(emptyLists)
@@ -53,9 +65,33 @@ export default function App() {
                 next[c] = results[i]
                 firstSel[c] = results[i][0]?.slug ?? null
             })
+            // Honor the URL's collection/slug if present and valid.
+            const init = parseHash()
+            const startCol = init.collection && COLLECTION_ORDER.includes(init.collection) ? init.collection : 'posts'
+            const ci = COLLECTION_ORDER.indexOf(startCol)
+            if (init.slug && results[ci]?.some((r) => r.slug === init.slug)) firstSel[startCol] = init.slug
             setLists(next)
             setSel(firstSel)
+            setCollection(startCol)
+            writeHash(startCol, firstSel[startCol], true)
         })
+    }, [])
+
+    // Sync state from the URL on back/forward and manual hash edits.
+    useEffect(() => {
+        const onNav = () => {
+            const { collection: c, slug } = parseHash()
+            if (c && (COLLECTION_ORDER as string[]).includes(c)) {
+                setCollection(c)
+                if (slug) setSel((cur) => ({ ...cur, [c]: slug }))
+            }
+        }
+        window.addEventListener('popstate', onNav)
+        window.addEventListener('hashchange', onNav)
+        return () => {
+            window.removeEventListener('popstate', onNav)
+            window.removeEventListener('hashchange', onNav)
+        }
     }, [])
 
     const queueSave = useCallback((c: CollectionName, resource: Resource) => {
@@ -96,6 +132,7 @@ export default function App() {
         const fresh = await api.create(collection)
         setLists((cur) => ({ ...cur, [collection]: [fresh, ...cur[collection]] }))
         setSel((cur) => ({ ...cur, [collection]: fresh.slug }))
+        writeHash(collection, fresh.slug)
         setStatus('idle')
         setDrawer(false)
     }, [collection])
@@ -103,17 +140,22 @@ export default function App() {
     const select = useCallback(
         (slug: string) => {
             setSel((cur) => ({ ...cur, [collection]: slug }))
+            writeHash(collection, slug)
             setStatus('idle')
             setDrawer(false)
         },
         [collection],
     )
 
-    const switchCollection = useCallback((c: CollectionName) => {
-        setCollection(c)
-        setStatus('idle')
-        setDetails(false)
-    }, [])
+    const switchCollection = useCallback(
+        (c: CollectionName) => {
+            setCollection(c)
+            writeHash(c, sel[c])
+            setStatus('idle')
+            setDetails(false)
+        },
+        [sel],
+    )
 
     // Drag-resize the feed rail (updates --rail-w live; persisted).
     const startResize = useCallback((e: React.PointerEvent) => {

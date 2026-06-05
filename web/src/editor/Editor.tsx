@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { RawHtml } from './RawHtmlNode'
 import { Callout } from './CalloutNode'
 import { Figure } from './FigureNode'
+import { CodeBlock } from './CodeBlock'
 import { SlashCommand } from './SlashCommand'
 import { createMarkdownParser, serializeMarkdown } from './markdown'
 import type { MarkdownParser } from 'prosemirror-markdown'
@@ -25,7 +26,8 @@ export function Editor({ slug, title, body, onTitle, onBody }: Props) {
 
     const editor = useEditor({
         extensions: [
-            StarterKit.configure({ heading: { levels: [2, 3, 4] } }),
+            StarterKit.configure({ heading: { levels: [2, 3, 4] }, codeBlock: false }),
+            CodeBlock,
             Placeholder.configure({
                 placeholder: ({ node }) =>
                     node.type.name === 'heading' ? 'Section title' : "Write. Press '/' for blocks.",

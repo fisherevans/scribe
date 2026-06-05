@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tiptap/extension-code-block-lowlight": "^2.27.2",
     "@tiptap/extension-image": "^2.27.2",
     "@tiptap/extension-link": "^2.27.2",
     "@tiptap/extension-placeholder": "^2.11.5",
@@ -17,6 +18,7 @@
     "@tiptap/starter-kit": "^2.11.5",
     "@tiptap/suggestion": "^2.11.5",
     "framer-motion": "^11.18.2",
+    "lowlight": "^3.3.0",
     "markdown-it": "^14.2.0",
     "prosemirror-markdown": "^1.13.4",
     "react": "^18.3.1",
