@@ -54,24 +54,71 @@ Browser -> Cloudflare edge -> Cloudflare Tunnel -> caddy (forward-auth) -> scrib
 ```
 
 Runs on the Nottingham homelab k3s cluster, exposed at `scribe.fisher.sh` via
-Cloudflare Tunnel. The cluster's existing Go auth service fronts every app
-through caddy forward-auth, so scribe never sees an unauthenticated request and
-does not implement its own login. Single user, so platform gating is enough;
-scribe trusts the authenticated request.
+Cloudflare Tunnel, behind the cluster's auth service (see Auth below). But
+scribe must not *depend* on that auth service - it's swappable.
+
+### Auth (swappable)
+
+scribe never implements login. It consumes identity from whatever sits in front
+of it, or runs open. This keeps it reusable: someone else can run it locally
+with no auth, or front it with Cloudflare Access / oauth2-proxy / their own SSO,
+without inheriting `auth.fisher.sh`.
+
+Selected by config (`SCRIBE_AUTH_MODE`):
+
+- **`none`** (default) - open. For local dev or a trusted network. Runs out of
+  the box with zero auth setup.
+- **`trusted-header`** - read the authenticated user from a configurable header
+  set by an upstream proxy (`SCRIBE_AUTH_HEADER`, e.g.
+  `Cf-Access-Authenticated-User-Email` for Cloudflare Access, or whatever the
+  Nottingham auth service injects). Fails closed: reject requests missing the
+  header so it can't be bypassed by hitting the pod directly.
+
+A small `Authenticator` interface with `none` and `trustedHeader` implementations;
+adding a mode later (shared-secret, real OIDC) is one more implementation, not a
+rewrite. Single user means we don't even map identities - presence of a valid
+upstream header is sufficient. The Nottingham deploy uses `trusted-header`
+behind caddy forward-auth; that's just one configuration, not a requirement.
 
 ### Staging vs production (the mirror model)
 
-There is no "draft" backend state. The service holds a working copy of the repo
-and we move changes between two places:
+There is no "draft" backend state. scribe owns a dedicated **`staging` branch**
+in the blog repo; its working tree is checked out on `staging`. Changes move
+between `staging` and `main`:
 
-- **Save -> staging.** Writes the file into the working tree. Cheap, frequent,
-  autosave-friendly. No commit noise.
-- **Promote -> production.** Commit + push to `main`, which triggers the
-  existing Astro deploy. If `origin/main` moved underneath (edited on GitHub or
-  via Pages CMS), promote does a `git merge origin/main`. Clean merges
-  auto-apply; conflicts drop into a branch resolved by hand. Everything is
-  markdown/YAML so manual merges are tolerable, and conflicts should be rare
-  with a single writer.
+- **Save -> staging.** Write the file into the working tree and commit to
+  `staging`. Commit granularity is per-save (debounced); WIP/noisy commits on
+  `staging` are fine. This is also the durability mechanism (see backup below).
+- **Promote -> production.** Merge `staging` into `main` and push `main`, which
+  triggers the existing Astro deploy. If `main` moved underneath (edited on
+  GitHub or via Pages CMS), the merge reconciles it; clean merges auto-apply,
+  conflicts drop into a manual-resolve flow. Squash the merge for clean `main`
+  history, then fast-forward `staging` to `main` so the branches don't diverge.
+  Everything is markdown/YAML, so manual merges are tolerable, and conflicts
+  should be rare with a single writer.
+
+`origin` push of `staging` is always a fast-forward (scribe is the sole writer
+of that branch). Only the `staging -> main` merge can conflict, and only when
+`main` advanced independently.
+
+### Durability / backup (the public-repo problem)
+
+`fisherevans/log` is **public**. Pushing `staging` to `origin` would make every
+unpublished draft world-readable. Two real options, decide per taste:
+
+1. **PVC + existing NAS backup only.** The NFS PVC survives pod reschedule, and
+   the NAS is already backed up offsite (Hyper Backup -> B2). Pod loss is not
+   data loss. No draft ever leaves the cluster until promoted. Simplest;
+   relies on infra backups rather than git for DR. Unpromoted drafts have no
+   git history off-box.
+2. **Private mirror for `staging`.** Add a second remote pointing at a private
+   repo (e.g. `fisherevans/log-staging`); push `staging` there every ~30-60 min
+   for git-level offsite backup of drafts. `main` still goes to public
+   `origin` on promote. Drafts stay private; you get git history + restore-from-
+   branch. Cost: a second repo and a credential with access to it.
+
+Promote does not depend on either: it's a local merge + push of `main` to the
+public `origin`. Backup is orthogonal.
 
 Two independent axes, which must not be confused:
 
@@ -115,9 +162,12 @@ Deployment specifics:
   want one writer; never run two pods. Identical constraint to rsvp.
 - **One NFS PVC mounted at `/data`** holds both the staging git checkout and
   the SQLite metadata DB. NFS + SQLite is already proven on this cluster (rsvp).
-- **Secrets (`scribe-secrets`):** a GitHub credential (deploy key or PAT) so the
-  pod can fetch `origin/main` and push on promote. Plus any session/base-URL
-  config. Bitwarden-backed `configure-*` target pattern.
+- **Secrets (`scribe-secrets`):** a GitHub credential so the pod can fetch
+  `main` and push on promote (and push `staging` to the private mirror, if used).
+  Prefer a **fine-grained PAT over HTTPS** scoped to just the repo(s) with
+  `contents:write` - simpler in-container than an SSH deploy key (no
+  known_hosts/agent), nearly as tight. Push URL becomes
+  `https://x-access-token:$TOKEN@github.com/fisherevans/log.git`.
 - **Health endpoint `/api/health`** to match the cluster's probe convention
   (liveness + readiness), not `/healthz`.
 - **Expose:** add a `handle` block for `scribe.fisher.sh` to
@@ -127,6 +177,19 @@ Deployment specifics:
 Promote pushes to the blog repo's `main`, which triggers the existing
 `log.fisher.sh` deploy pipeline. scribe does not deploy the blog itself; it just
 moves commits.
+
+### Secrets (Bitwarden)
+
+Follows the per-app BW-item convention (`rsvp` item -> `configure-rsvp` target).
+
+- New BW item **`scribe`** holding the GitHub PAT (field e.g. `github-token`),
+  and any backup-mirror credential if option 2 is chosen.
+- **Deploy:** a `configure-scribe` Makefile target in `nottingham-cloud/k3s`
+  pulls the fields and materializes the `scribe-secrets` Secret (same shape as
+  `configure-rsvp`).
+- **Local dev:** the *same* BW item, read via `scripts/bw-field.sh scribe
+  github-token`, exported into the dev environment. One source of truth for the
+  credential across local and deployed - no separate `.env` checked in.
 
 ## Editor pipeline (the engineering risk)
 
@@ -198,11 +261,12 @@ into frontmatter (pollutes files, fights the schema).
 - Simple tag chips (not the "Add an item" repeater).
 - Metadata deferred to a publish sheet; `date` auto, `hasVideo` auto-derived,
   `updatedDate` auto on re-promote.
-- Autosave -> staging. Promote -> commit + push -> existing deploy fires.
-- Single user. Auth handled by the cluster's forward-auth (`auth.fisher.sh`);
-  scribe implements none of its own.
+- Autosave -> commit to `staging`. Promote -> merge `staging` into `main` +
+  push -> existing deploy fires.
+- Single user. Auth is swappable: `none` for local, `trusted-header` behind the
+  cluster forward-auth when deployed. scribe implements no login.
 - Deploy to Nottingham k3s as a `make new-project` app at `scribe.fisher.sh`
-  (see Deployment).
+  (see Deployment + Secrets).
 
 ### Phase 1 - daily-driver gaps
 - Notes sidecar (private app-side metadata).
