@@ -31,7 +31,8 @@ const ITEMS: Item[] = [
     { group: 'Blocks', title: 'Quote', hint: 'Block quote', glyph: '“', run: (e, r) => e.chain().focus().deleteRange(r).toggleBlockquote().run() },
     { group: 'Blocks', title: 'Divider', hint: 'Horizontal rule', glyph: '—', run: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run() },
     { group: 'Blocks', title: 'Code block', hint: 'Monospaced', glyph: '{}', run: (e, r) => e.chain().focus().deleteRange(r).toggleCodeBlock().run() },
-    { group: 'Custom & embeds', title: 'Figure', hint: 'Image with caption', glyph: '🖼', run: (e, r) => e.chain().focus().deleteRange(r).insertFigure().run() },
+    { group: 'Custom & embeds', title: 'Image', hint: 'A standalone image', glyph: '🖼', run: (e, r) => e.chain().focus().deleteRange(r).insertImage().run() },
+    { group: 'Custom & embeds', title: 'Figure', hint: 'Image with caption', glyph: '🏞', run: (e, r) => e.chain().focus().deleteRange(r).insertFigure().run() },
     { group: 'Custom & embeds', title: 'Callout', hint: 'Note · idea · heads-up', glyph: '✷', run: (e, r) => e.chain().focus().deleteRange(r).insertCallout('info').run() },
     { group: 'Custom & embeds', title: 'Raw HTML', hint: 'Opaque, preserved verbatim', glyph: '</>', run: (e, r) => e.chain().focus().deleteRange(r).insertRawHtml('').run() },
 ]

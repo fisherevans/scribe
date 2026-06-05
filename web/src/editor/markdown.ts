@@ -14,6 +14,27 @@ import type { Node as PMNode, Schema } from '@tiptap/pm/model'
 function newMarkdownIt(): MarkdownIt {
     const md = new MarkdownIt({ html: true, linkify: false, typographer: false })
     md.inline.ruler.disable('html_inline')
+    // Lift a paragraph that is just an image into a standalone block image, so
+    // images are real block nodes (better cursor/backspace behavior) rather
+    // than an inline image trapped at the end of a paragraph.
+    md.core.ruler.after('inline', 'lone_image_block', (state) => {
+        const toks = state.tokens
+        for (let i = toks.length - 1; i >= 2; i--) {
+            if (toks[i].type !== 'paragraph_close' || toks[i - 1].type !== 'inline' || toks[i - 2].type !== 'paragraph_open') continue
+            const kids = toks[i - 1].children || []
+            const images = kids.filter((k) => k.type === 'image')
+            const onlyImage =
+                images.length === 1 &&
+                kids.every((k) => k.type === 'image' || k.type === 'softbreak' || (k.type === 'text' && !k.content.trim()))
+            if (!onlyImage) continue
+            const t = new state.Token('image_block', '', 0)
+            t.attrs = images[0].attrs
+            t.children = images[0].children
+            toks.splice(i - 2, 3, t)
+            i -= 2
+        }
+        return true
+    })
     return md
 }
 
@@ -35,12 +56,14 @@ const tokenSpec = {
         noCloseToken: true,
     },
     hr: { node: 'horizontalRule' },
-    image: {
+    // Block image (produced by the lone_image_block core rule). No inline image
+    // mapping: every image in the corpus is on its own line.
+    image_block: {
         node: 'image',
         getAttrs: (tok: any) => ({
             src: tok.attrGet('src'),
             title: tok.attrGet('title') || null,
-            alt: (tok.children && tok.children[0] && tok.children[0].content) || null,
+            alt: (tok.children && tok.children[0] && tok.children[0].content) || '',
         }),
     },
     hardbreak: { node: 'hardBreak' },
@@ -111,6 +134,7 @@ const serializer = new MarkdownSerializer(
         image(state, node) {
             const title = node.attrs.title ? ' "' + String(node.attrs.title).replace(/"/g, '\\"') + '"' : ''
             state.write('![' + state.esc(node.attrs.alt || '') + '](' + node.attrs.src + title + ')')
+            state.closeBlock(node) // block image
         },
         hardBreak(state, node, parent, index) {
             for (let i = index + 1; i < parent.childCount; i++) {

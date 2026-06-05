@@ -68,7 +68,7 @@ export const RawHtml = Node.create({
     },
 })
 
-function RawHtmlView({ node, updateAttributes, editor }: NodeViewProps) {
+function RawHtmlView({ node, updateAttributes, deleteNode, editor }: NodeViewProps) {
     const html: string = node.attrs.html ?? ''
     const [mode, setMode] = useState<'preview' | 'source'>(html.trim() ? 'preview' : 'source')
     const editable = editor.isEditable
@@ -92,6 +92,11 @@ function RawHtmlView({ node, updateAttributes, editor }: NodeViewProps) {
                     >
                         source
                     </button>
+                    {editable && (
+                        <button className="embed__del" type="button" title="delete" onClick={() => deleteNode()}>
+                            ✕
+                        </button>
+                    )}
                 </div>
             </div>
             {mode === 'preview' ? (

@@ -83,7 +83,7 @@ export const Figure = Node.create({
     },
 })
 
-function FigureView({ node, updateAttributes, editor }: NodeViewProps) {
+function FigureView({ node, updateAttributes, deleteNode, editor }: NodeViewProps) {
     const { src, alt, caption } = node.attrs as { src: string; alt: string; caption: string }
     const editable = editor.isEditable
     return (
@@ -112,6 +112,11 @@ function FigureView({ node, updateAttributes, editor }: NodeViewProps) {
                 {src && editable && (
                     <button className="figure__change" type="button" onClick={() => updateAttributes({ src: '' })}>
                         change
+                    </button>
+                )}
+                {editable && (
+                    <button className="figure__change" type="button" title="delete" onClick={() => deleteNode()}>
+                        delete
                     </button>
                 )}
             </div>

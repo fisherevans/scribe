@@ -77,7 +77,7 @@ export const Callout = Node.create({
     },
 })
 
-function CalloutView({ node, updateAttributes, editor }: NodeViewProps) {
+function CalloutView({ node, updateAttributes, deleteNode, editor }: NodeViewProps) {
     const tone: Tone = node.attrs.tone ?? 'info'
     const current = TONES.find((t) => t.tone === tone) ?? TONES[0]
     return (
@@ -97,6 +97,9 @@ function CalloutView({ node, updateAttributes, editor }: NodeViewProps) {
                                 {t.glyph}
                             </button>
                         ))}
+                        <button className="callout__tone callout__del" type="button" title="delete" onClick={() => deleteNode()}>
+                            ✕
+                        </button>
                     </div>
                 )}
             </div>

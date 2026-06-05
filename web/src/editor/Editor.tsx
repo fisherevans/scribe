@@ -1,8 +1,8 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
-import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
+import { ImageBlock } from './ImageBlock'
 import { useEffect, useMemo, useRef } from 'react'
 import { RawHtml } from './RawHtmlNode'
 import { Callout } from './CalloutNode'
@@ -43,10 +43,7 @@ export function Editor({ slug, title, body, onEditTitle, onBody }: Props) {
                     return ''
                 },
             }),
-            // Image is inline to match markdown semantics (a lone image is a
-            // paragraph containing an inline image), which keeps block
-            // separation correct on serialize.
-            Image.configure({ inline: true }),
+            ImageBlock,
             Link.configure({ openOnClick: false, autolink: false }),
             RawHtml,
             Callout,

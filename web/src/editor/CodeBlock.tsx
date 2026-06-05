@@ -9,7 +9,7 @@ import { common, createLowlight } from 'lowlight'
 const lowlight = createLowlight(common)
 const LANGUAGES = lowlight.listLanguages().sort()
 
-function CodeBlockView({ node, updateAttributes, editor }: NodeViewProps) {
+function CodeBlockView({ node, updateAttributes, deleteNode, editor }: NodeViewProps) {
     const language: string = node.attrs.language || ''
     return (
         <NodeViewWrapper className="codeblock">
@@ -27,6 +27,11 @@ function CodeBlockView({ node, updateAttributes, editor }: NodeViewProps) {
                         </option>
                     ))}
                 </select>
+                {editor.isEditable && (
+                    <button className="codeblock__del" type="button" title="delete" onClick={() => deleteNode()}>
+                        ✕
+                    </button>
+                )}
             </div>
             <pre>
                 <NodeViewContent as="code" />

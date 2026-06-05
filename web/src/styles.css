@@ -309,7 +309,67 @@ button { font-family: inherit; cursor: pointer; }
 .prose li { margin-bottom: 0.4rem; }
 .prose li::marker { color: var(--brass-deep); }
 .prose hr { border: none; border-top: 1px solid var(--paper-line); margin: 2.2rem auto; width: 42%; }
-.prose img { max-width: 100%; height: auto; display: block; margin: 1.4rem auto; border-radius: 0.35rem; }
+.prose img { max-width: 100%; height: auto; display: block; margin: 0 auto; border-radius: 0.35rem; }
+
+/* ---- Block image (node view) ------------------------------------------- */
+.imageblock { position: relative; margin: 1.4rem 0; }
+.imageblock.ProseMirror-selectednode { outline: 2px solid var(--brass); outline-offset: 3px; border-radius: 0.4rem; }
+.imageblock__placeholder {
+    display: grid;
+    place-items: center;
+    padding: 2rem;
+    border: 1.5px dashed var(--paper-line);
+    border-radius: 0.5rem;
+    background: var(--paper-2);
+    color: var(--ink-faintest);
+    font-family: var(--mono);
+    font-size: 0.8rem;
+}
+.imageblock__edit { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem; }
+.blockinput {
+    width: 100%;
+    background: var(--paper-2);
+    border: 1px solid var(--paper-line);
+    border-radius: 0.4rem;
+    padding: 0.4rem 0.55rem;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--ink);
+    outline: none;
+}
+.blockinput:focus { border-color: var(--brass-deep); }
+
+/* Floating block controls (edit / delete) */
+.blocktools {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    display: flex;
+    gap: 0.25rem;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.imageblock:hover .blocktools { opacity: 1; }
+.blocktools button {
+    width: 1.7rem;
+    height: 1.7rem;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--desk-line);
+    background: rgba(27, 22, 19, 0.82);
+    color: var(--ink-on-desk);
+    border-radius: 0.4rem;
+    font-size: 0.75rem;
+    backdrop-filter: blur(4px);
+}
+.blocktools button:hover { border-color: var(--brass); color: #e0a64f; }
+
+/* Per-block delete buttons in node-view bars */
+.embed__del, .codeblock__del { margin-left: 0.3rem; color: var(--ink-faintest); background: none; border: none; font-size: 0.7rem; padding: 0.2rem 0.3rem; }
+.embed__del:hover, .codeblock__del:hover { color: var(--rose); }
+.codeblock__bar { justify-content: space-between; align-items: center; }
+.callout__del { color: var(--ink-faintest); }
+.callout__del:hover { color: var(--rose); border-color: rgba(192, 125, 84, 0.5); }
 .prose code {
     font-family: var(--mono);
     font-size: 0.85em;
