@@ -10,12 +10,13 @@ interface Props {
     onClose: () => void
     onPatch: (patch: Partial<Post>) => void
     onRename: (from: string, to: string) => void
+    onDelete: () => void
 }
 
 // Deferred metadata. None of it gates writing. Tags autocomplete against the
 // existing tag collection so you pick the canonical slug instead of guessing
 // game-dev vs gamedev. Notes are private app-side state (not yet persisted).
-export function PublishSheet({ post, allTags, open, onClose, onPatch, onRename }: Props) {
+export function PublishSheet({ post, allTags, open, onClose, onPatch, onRename, onDelete }: Props) {
     const [tagDraft, setTagDraft] = useState('')
     const [tagFocus, setTagFocus] = useState(false)
     const [slugDraft, setSlugDraft] = useState('')
@@ -172,6 +173,12 @@ export function PublishSheet({ post, allTags, open, onClose, onPatch, onRename }
                                 onChange={(e) => onPatch({ notes: e.target.value })}
                             />
                         </label>
+
+                        <div className="sheet__danger">
+                            <button className="btn btn--danger btn--block" type="button" onClick={onDelete}>
+                                🗑 Delete post
+                            </button>
+                        </div>
                     </motion.aside>
                 </>
             )}

@@ -13,6 +13,7 @@ export interface ExperienceProps {
     resource: Resource
     onPatch: (p: Partial<Resource>) => void
     onEditTitle?: () => void // posts only: open the title/slug modal
+    onDelete?: () => void // delete this resource
     editable?: boolean // posts only: view vs edit mode
 }
 
@@ -22,9 +23,12 @@ export interface CollectionDef {
     glyph: string
     newLabel: string
     hasDetails: boolean // posts carry the deferred publish sheet
+    experienceLabel: string // human label for the editing UI this type uses
     Experience: ComponentType<ExperienceProps>
     feedTitle: (r: Resource) => string
     feedSub: (r: Resource) => string | undefined
+    // Live URL on the deployed blog, given a domain. null = no public page.
+    livePath: (r: Resource) => string | null
 }
 
 const snippetFields: FieldDef[] = [
@@ -41,9 +45,17 @@ export const COLLECTIONS: Record<CollectionName, CollectionDef> = {
         glyph: '✎',
         newLabel: '+ write',
         hasDetails: true,
+        experienceLabel: 'Document editor',
         Experience: PostExperience as ComponentType<ExperienceProps>,
         feedTitle: (r) => (r as Post).title || 'Untitled',
         feedSub: (r) => (r as Post).description || undefined,
+        // /posts/YYYY/MM/DD/<slug>/ (date is UTC; see src/lib/posts.ts)
+        livePath: (r) => {
+            const p = r as Post
+            if (!p.date) return null
+            const [y, m, d] = p.date.split('-')
+            return `/posts/${y}/${m}/${d}/${p.slug}/`
+        },
     },
     tags: {
         name: 'tags',
@@ -51,9 +63,11 @@ export const COLLECTIONS: Record<CollectionName, CollectionDef> = {
         glyph: '#',
         newLabel: '+ new tag',
         hasDetails: false,
+        experienceLabel: 'Simple form',
         Experience: TagExperience as ComponentType<ExperienceProps>,
         feedTitle: (r) => (r as Tag).name || r.slug,
         feedSub: (r) => (r as Tag).description || undefined,
+        livePath: (r) => `/tags/${r.slug}/`,
     },
     snippets: {
         name: 'snippets',
@@ -61,10 +75,12 @@ export const COLLECTIONS: Record<CollectionName, CollectionDef> = {
         glyph: '◇',
         newLabel: '+ new snippet',
         hasDetails: false,
+        experienceLabel: 'Auto-form (generic fallback)',
         // No bespoke component -> generic auto-form from the field schema.
         Experience: (p: ExperienceProps) => GenericExperience({ ...p, fields: snippetFields }),
         feedTitle: (r) => (r as Snippet).title || 'Untitled',
         feedSub: (r) => strip((r as Snippet).content) || undefined,
+        livePath: () => null,
     },
 }
 

@@ -6,9 +6,10 @@ import { CollectionRail } from './components/CollectionRail'
 import { Feed } from './components/Feed'
 import { TopBar, type SaveStatus } from './components/TopBar'
 import { PublishSheet } from './components/PublishSheet'
-import { ThemePanel } from './components/ThemePanel'
+import { SettingsPanel } from './components/SettingsPanel'
 import { TitleSlugModal } from './components/TitleSlugModal'
 import { applyTheme, DEFAULT_THEME, loadTheme, saveTheme, type Theme } from './theme'
+import { loadSettings, saveSettings, liveUrl, type AppSettings } from './settings'
 import { slugify, uniqueSlug } from './slug'
 
 type ByCollection<T> = Record<CollectionName, T>
@@ -40,10 +41,11 @@ export default function App() {
     const [promoting, setPromoting] = useState(false)
     const [drawer, setDrawer] = useState(false)
     const [details, setDetails] = useState(false)
-    const [themeOpen, setThemeOpen] = useState(false)
+    const [settingsOpen, setSettingsOpen] = useState(false)
     const [editMode, setEditMode] = useState(false) // posts open read-only; edit is explicit
     const [modal, setModal] = useState<{ open: boolean; mode: 'new' | 'edit' }>({ open: false, mode: 'new' })
     const [theme, setTheme] = useState<Theme>(loadTheme)
+    const [settings, setSettings] = useState<AppSettings>(loadSettings)
     const [loadError, setLoadError] = useState<string | null>(null)
     const saveTimer = useRef<number | null>(null)
     const railW = useRef(loadRail())
@@ -57,6 +59,8 @@ export default function App() {
         applyTheme(theme)
         saveTheme(theme)
     }, [theme])
+
+    useEffect(() => saveSettings(settings), [settings])
 
     // Hide edit-only affordances (drag handle) when not in edit mode.
     useEffect(() => {
@@ -330,7 +334,7 @@ export default function App() {
     return (
         <div className={'app' + (drawer ? ' app--drawer' : '')}>
             <div className="app__nav">
-                <CollectionRail active={collection} onSelect={switchCollection} />
+                <CollectionRail active={collection} onSelect={switchCollection} onSettings={() => setSettingsOpen(true)} />
                 <div className="app__feed">
                     <Feed def={def} items={items} activeSlug={activeSlug} allTags={allTags} onSelect={select} onNew={onNew} />
                 </div>
@@ -346,11 +350,10 @@ export default function App() {
                     editMode={editMode}
                     status={status}
                     promoting={promoting}
+                    liveUrl={active ? liveUrl(settings.hostedDomain, def.livePath(active)) : null}
                     onMenu={() => setDrawer((d) => !d)}
-                    onTheme={() => setThemeOpen(true)}
                     onToggleEdit={() => setEditMode((m) => !m)}
                     onDetails={() => setDetails(true)}
-                    onDelete={deleteActive}
                     onPromote={promote}
                 />
                 <div className={'app__canvas' + (collection === 'posts' ? '' : ' app__canvas--form')}>
@@ -359,6 +362,7 @@ export default function App() {
                             resource={active}
                             onPatch={patch}
                             onEditTitle={() => setModal({ open: true, mode: 'edit' })}
+                            onDelete={deleteActive}
                             editable={editMode}
                         />
                     ) : (
@@ -375,6 +379,7 @@ export default function App() {
                     onClose={() => setDetails(false)}
                     onPatch={patch as (p: Partial<Post>) => void}
                     onRename={rename}
+                    onDelete={deleteActive}
                 />
             )}
             <TitleSlugModal
@@ -385,12 +390,14 @@ export default function App() {
                 onCancel={() => setModal((m) => ({ ...m, open: false }))}
                 onSubmit={onModalSubmit}
             />
-            <ThemePanel
+            <SettingsPanel
+                open={settingsOpen}
                 theme={theme}
-                open={themeOpen}
-                onChange={setTheme}
-                onReset={() => setTheme({ ...DEFAULT_THEME })}
-                onClose={() => setThemeOpen(false)}
+                settings={settings}
+                onTheme={setTheme}
+                onThemeReset={() => setTheme({ ...DEFAULT_THEME })}
+                onSettings={setSettings}
+                onClose={() => setSettingsOpen(false)}
             />
         </div>
     )

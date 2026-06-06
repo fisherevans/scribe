@@ -10,11 +10,10 @@ interface Props {
     editMode: boolean
     status: SaveStatus
     promoting: boolean
+    liveUrl: string | null
     onMenu: () => void
-    onTheme: () => void
     onToggleEdit: () => void
     onDetails: () => void
-    onDelete: () => void
     onPromote: () => void
 }
 
@@ -25,7 +24,7 @@ const STATUS_LABEL: Record<SaveStatus, string> = {
     edited: 'unsaved',
 }
 
-export function TopBar({ resource, showDetails, showEdit, editMode, status, promoting, onMenu, onTheme, onToggleEdit, onDetails, onDelete, onPromote }: Props) {
+export function TopBar({ resource, showDetails, showEdit, editMode, status, promoting, liveUrl, onMenu, onToggleEdit, onDetails, onPromote }: Props) {
     const canPromote = resource && (resource.state === 'staged' || resource.dirty || status === 'edited')
     const [menuOpen, setMenuOpen] = useState(false)
     // Secondary-action handlers also close the overflow menu (mobile).
@@ -73,14 +72,11 @@ export function TopBar({ resource, showDetails, showEdit, editMode, status, prom
                                 details
                             </button>
                         )}
-                        <button className="btn btn--ghost" onClick={close(onTheme)} type="button" title="theme">
-                            <span className="topbar__ico">aA</span>
-                            <span className="topbar__label">theme</span>
-                        </button>
-                        <button className="btn btn--ghost btn--danger" onClick={close(onDelete)} type="button" disabled={!resource} title="delete">
-                            <span className="topbar__ico">🗑</span>
-                            <span className="topbar__label">delete</span>
-                        </button>
+                        {liveUrl && (
+                            <a className="btn btn--ghost topbar__link" href={liveUrl} target="_blank" rel="noreferrer" onClick={() => setMenuOpen(false)}>
+                                view live ↗
+                            </a>
+                        )}
                         <button className="btn btn--promote" onClick={close(onPromote)} type="button" disabled={!canPromote || promoting}>
                             {promoting ? 'promoting…' : resource?.state === 'promoted' && !canPromote ? 'live' : 'promote'}
                         </button>

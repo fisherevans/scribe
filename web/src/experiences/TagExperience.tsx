@@ -3,11 +3,12 @@ import type { Tag } from '../types'
 interface Props {
     resource: Tag
     onPatch: (p: Partial<Tag>) => void
+    onDelete?: () => void
 }
 
 // Tags get a bespoke simple form - no document surface, just the two fields the
 // schema defines. The slug is derived/fixed (it's the filename), shown read-only.
-export function TagExperience({ resource, onPatch }: Props) {
+export function TagExperience({ resource, onPatch, onDelete }: Props) {
     return (
         <div className="formcard">
             <div className="formcard__head">
@@ -33,6 +34,13 @@ export function TagExperience({ resource, onPatch }: Props) {
                     onChange={(e) => onPatch({ description: e.target.value })}
                 />
             </label>
+            {onDelete && (
+                <div className="sheet__danger">
+                    <button className="btn btn--danger btn--block" type="button" onClick={onDelete}>
+                        🗑 Delete tag
+                    </button>
+                </div>
+            )}
         </div>
     )
 }

@@ -4,11 +4,12 @@ import type { CollectionName } from '../types'
 interface Props {
     active: CollectionName
     onSelect: (c: CollectionName) => void
+    onSettings: () => void
 }
 
 // The far-left type switcher. One entry per registered collection; this is the
-// visible face of "managing resource types".
-export function CollectionRail({ active, onSelect }: Props) {
+// visible face of "managing resource types". Settings sits at the bottom.
+export function CollectionRail({ active, onSelect, onSettings }: Props) {
     return (
         <div className="crail">
             <div className="crail__mark">s</div>
@@ -27,6 +28,10 @@ export function CollectionRail({ active, onSelect }: Props) {
                     </button>
                 )
             })}
+            <button type="button" className="crail__btn crail__settings" onClick={onSettings} title="settings">
+                <span className="crail__glyph">⚙</span>
+                <span className="crail__label">settings</span>
+            </button>
         </div>
     )
 }

@@ -105,6 +105,7 @@ button { font-family: inherit; cursor: pointer; }
 .crail__btn.is-active { color: var(--brass); background: var(--brass-soft); }
 .crail__glyph { font-size: 1.1rem; line-height: 1; }
 .crail__label { font-family: var(--mono); font-size: 0.52rem; text-transform: uppercase; letter-spacing: 0.08em; }
+.crail__settings { margin-top: auto; }
 .app__canvas {
     flex: 1;
     overflow-y: auto;
@@ -749,6 +750,9 @@ body.is-readonly .drag-handle { display: none !important; }
     box-shadow: -20px 0 50px -20px rgba(0, 0, 0, 0.7);
     padding: 1.2rem 1.3rem 2.5rem;
     overflow-y: auto;
+    overflow-x: hidden; /* panels scroll vertically only */
+    overscroll-behavior: contain; /* no chained horizontal rubber-band on touch */
+    touch-action: pan-y;
 }
 .sheet__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.3rem; }
 .sheet__title { font-family: var(--mono); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.18em; color: var(--ink-faint); }
@@ -857,6 +861,31 @@ input[type='date'].field__input { font-family: var(--mono); font-size: 0.82rem; 
 .modal__hint { text-transform: none; letter-spacing: 0; color: var(--ink-faint); opacity: 0.8; }
 .modal__input--mono { font-family: var(--mono); font-size: 0.85rem; }
 .modal__actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.3rem; }
+
+/* ---- Settings panel ----------------------------------------------------- */
+.settings__section {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--brass);
+    margin: 1.6rem 0 0.8rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--desk-line);
+}
+.settings__section:first-of-type { margin-top: 0.3rem; }
+.settings__note { font-size: 0.78rem; line-height: 1.5; color: var(--ink-faint); margin: 0 0 0.8rem; }
+.settings__note code { font-family: var(--mono); color: var(--ink-mute); }
+.typelist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.typerow { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.6rem; background: var(--desk); border: 1px solid var(--desk-line); border-radius: 0.5rem; }
+.typerow__glyph { width: 1.3rem; text-align: center; color: var(--brass); }
+.typerow__name { font-family: var(--serif-display); font-size: 0.95rem; color: var(--ink-on-desk); }
+.typerow__exp { margin-left: auto; font-family: var(--mono); font-size: 0.66rem; color: var(--ink-faint); }
+
+/* ---- Danger zone (delete) in panels ------------------------------------ */
+.sheet__danger { margin-top: 1.6rem; padding-top: 1.2rem; border-top: 1px dashed var(--desk-line); }
+.btn--block { width: 100%; justify-content: center; padding-top: 0.55rem; padding-bottom: 0.55rem; }
+.topbar__link { text-decoration: none; display: inline-flex; align-items: center; }
 
 
 /* ---- Feed controls (filter / sort) ------------------------------------- */
