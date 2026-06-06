@@ -1,5 +1,11 @@
 # scribe - design & roadmap
 
+> **North star:** [extensibility.md](extensibility.md) describes the real target -
+> a schema-driven, plugin-extensible publishing client for *any* Pages-CMS-backed
+> site. This document covers the bootstrap vertical slice (hardcoded posts + tags)
+> that everything was built on; its phase roadmap below is superseded by the
+> milestones there.
+
 A git-backed writing tool for `log.fisher.sh`. Replaces the day-to-day editing
 experience of Pages CMS with a writing-first editor, while leaving the repo,
 the content schema, and the Astro build untouched. Pages CMS keeps working as a
