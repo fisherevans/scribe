@@ -44,6 +44,7 @@ export default function App() {
     const [editMode, setEditMode] = useState(false) // posts open read-only; edit is explicit
     const [modal, setModal] = useState<{ open: boolean; mode: 'new' | 'edit' }>({ open: false, mode: 'new' })
     const [theme, setTheme] = useState<Theme>(loadTheme)
+    const [loadError, setLoadError] = useState<string | null>(null)
     const saveTimer = useRef<number | null>(null)
     const railW = useRef(loadRail())
 
@@ -56,6 +57,11 @@ export default function App() {
         applyTheme(theme)
         saveTheme(theme)
     }, [theme])
+
+    // Hide edit-only affordances (drag handle) when not in edit mode.
+    useEffect(() => {
+        document.body.classList.toggle('is-readonly', !editMode)
+    }, [editMode])
 
     useEffect(() => {
         document.documentElement.style.setProperty('--rail-w', railW.current + 'rem')
@@ -77,23 +83,25 @@ export default function App() {
     }, [])
 
     useEffect(() => {
-        Promise.all(COLLECTION_ORDER.map((c) => api.list(c))).then((results) => {
-            const next = { ...emptyLists }
-            const firstSel = { ...emptySel }
-            COLLECTION_ORDER.forEach((c, i) => {
-                next[c] = results[i]
-                firstSel[c] = results[i][0]?.slug ?? null
+        Promise.all(COLLECTION_ORDER.map((c) => api.list(c)))
+            .then((results) => {
+                const next = { ...emptyLists }
+                const firstSel = { ...emptySel }
+                COLLECTION_ORDER.forEach((c, i) => {
+                    next[c] = results[i]
+                    firstSel[c] = results[i][0]?.slug ?? null
+                })
+                // Honor the URL's collection/slug if present and valid.
+                const init = parseHash()
+                const startCol = init.collection && COLLECTION_ORDER.includes(init.collection) ? init.collection : 'posts'
+                const ci = COLLECTION_ORDER.indexOf(startCol)
+                if (init.slug && results[ci]?.some((r) => r.slug === init.slug)) firstSel[startCol] = init.slug
+                setLists(next)
+                setSel(firstSel)
+                setCollection(startCol)
+                writeHash(startCol, firstSel[startCol], true)
             })
-            // Honor the URL's collection/slug if present and valid.
-            const init = parseHash()
-            const startCol = init.collection && COLLECTION_ORDER.includes(init.collection) ? init.collection : 'posts'
-            const ci = COLLECTION_ORDER.indexOf(startCol)
-            if (init.slug && results[ci]?.some((r) => r.slug === init.slug)) firstSel[startCol] = init.slug
-            setLists(next)
-            setSel(firstSel)
-            setCollection(startCol)
-            writeHash(startCol, firstSel[startCol], true)
-        })
+            .catch((e) => setLoadError(e instanceof Error ? e.message : String(e)))
     }, [])
 
     // Sync state from the URL on back/forward and manual hash edits.
@@ -304,6 +312,20 @@ export default function App() {
 
     const Experience = def.Experience
     const allTags = lists.tags.map((t) => t.slug)
+
+    if (loadError) {
+        return (
+            <div className="crash">
+                <div className="crash__box">
+                    <h1 className="crash__title">Can’t reach the editor service</h1>
+                    <p className="crash__msg">{loadError}. Is the Go service running on :8080?</p>
+                    <button className="btn btn--promote" type="button" onClick={() => location.reload()}>
+                        retry
+                    </button>
+                </div>
+            </div>
+        )
+    }
 
     return (
         <div className={'app' + (drawer ? ' app--drawer' : '')}>
