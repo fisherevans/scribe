@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>scribe — vision, architecture & UX report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..600;1,9..144,400..500&family=Newsreader:opsz,wght@6..72,400..600&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --desk:#1b1613; --desk-2:#221c17; --desk-3:#2b231c; --desk-line:#3a3026;
+    --ink-faint:#8a7b6a; --ink-mute:#b3a48f; --ink-on-desk:#ece0cd;
+    --paper:#f4ede0; --paper-2:#efe6d6; --paper-line:#ddd0ba;
+    --ink:#2c2620; --ink-soft:#6d6051; --ink-faintest:#978a78;
+    --brass:#c0883b; --brass-deep:#a06f2c; --brass-soft:rgba(192,136,59,.16);
+    --sage:#8d9c6b; --rose:#c07d54;
+    --serif-d:'Fraunces',Georgia,serif; --serif-b:'Newsreader',Georgia,serif; --mono:'Spline Sans Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--desk);color:var(--ink-on-desk);font-family:var(--serif-b);font-size:18px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:60rem;margin:0 auto;padding:3rem 1.5rem 8rem}
+  header.top{border-bottom:1px solid var(--desk-line);padding-bottom:2rem;margin-bottom:2.5rem}
+  h1{font-family:var(--serif-d);font-weight:560;font-size:clamp(2.2rem,5vw,3.2rem);line-height:1.05;letter-spacing:-.02em;margin:0 0 .6rem}
+  .tagline{font-size:1.3rem;color:var(--ink-mute);font-style:italic;margin:0}
+  .meta{font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;color:var(--ink-faint);text-transform:uppercase;margin-top:1.2rem}
+  h2{font-family:var(--serif-d);font-weight:520;font-size:1.9rem;letter-spacing:-.01em;margin:3.2rem 0 1rem;padding-top:1.4rem;border-top:1px solid var(--desk-line)}
+  h2 .num{color:var(--brass);font-family:var(--mono);font-size:1.1rem;font-weight:500;margin-right:.6rem;vertical-align:.15em}
+  h3{font-family:var(--serif-d);font-weight:520;font-size:1.25rem;margin:2rem 0 .6rem;color:var(--ink-on-desk)}
+  p{margin:0 0 1rem;color:#ddd2c2}
+  a{color:var(--brass)}
+  strong{color:var(--ink-on-desk);font-weight:600}
+  em{color:var(--ink-mute)}
+  code{font-family:var(--mono);font-size:.82em;background:var(--desk-3);border:1px solid var(--desk-line);border-radius:4px;padding:.05em .35em;color:#e2cfa6}
+  ul{padding-left:1.2rem;color:#ddd2c2} li{margin-bottom:.45rem}
+  .lead{font-size:1.15rem;color:var(--ink-mute)}
+  .callout{background:var(--desk-2);border:1px solid var(--desk-line);border-left:3px solid var(--brass);border-radius:.5rem;padding:1rem 1.2rem;margin:1.4rem 0}
+  .callout--sage{border-left-color:var(--sage)} .callout--rose{border-left-color:var(--rose)}
+  .callout .k{font-family:var(--mono);font-size:.66rem;text-transform:uppercase;letter-spacing:.14em;color:var(--brass);display:block;margin-bottom:.4rem}
+  .callout--sage .k{color:var(--sage)} .callout--rose .k{color:var(--rose)}
+  .figcap{font-family:var(--mono);font-size:.68rem;text-transform:uppercase;letter-spacing:.12em;color:var(--ink-faint);margin:.6rem 0 .2rem}
+  /* layered architecture diagram */
+  .layers{display:flex;flex-direction:column;gap:.4rem;margin:1.2rem 0}
+  .layer{background:var(--desk-2);border:1px solid var(--desk-line);border-radius:.5rem;padding:.7rem 1rem;display:flex;gap:.8rem;align-items:baseline}
+  .layer .n{font-family:var(--mono);color:var(--brass);font-size:.8rem;flex:none;width:1.4rem}
+  .layer .t{font-family:var(--serif-d);color:var(--ink-on-desk);font-weight:520;flex:none;width:11rem}
+  .layer .d{color:var(--ink-faint);font-size:.92rem}
+  @media(max-width:640px){.layer{flex-direction:column;gap:.2rem}.layer .t{width:auto}}
+  /* ---------- mockups ---------- */
+  .mock{background:var(--desk-2);border:1px solid var(--desk-line);border-radius:.7rem;overflow:hidden;margin:1rem 0;box-shadow:0 20px 50px -28px rgba(0,0,0,.7)}
+  .mock__bar{display:flex;align-items:center;gap:.5rem;padding:.5rem .8rem;background:#171310;border-bottom:1px solid var(--desk-line)}
+  .dot{width:.6rem;height:.6rem;border-radius:50%;background:#3a3026} .dot.r{background:#5a4a3a}
+  .mock__url{margin-left:.6rem;font-family:var(--mono);font-size:.66rem;color:var(--ink-faint)}
+  .mock__body{padding:0}
+  /* app frame: rail + feed + main */
+  .app{display:grid;grid-template-columns:3rem 11rem 1fr;min-height:18rem}
+  .app.no-feed{grid-template-columns:3rem 1fr}
+  .crail{background:var(--desk);border-right:1px solid var(--desk-line);display:flex;flex-direction:column;align-items:center;gap:.5rem;padding:.7rem 0}
+  .crail .mk{font-family:var(--serif-d);color:var(--brass);font-weight:600}
+  .crail .ci{width:2.1rem;height:2.1rem;border-radius:.45rem;display:grid;place-items:center;color:var(--ink-faint);font-size:.9rem}
+  .crail .ci.on{background:var(--brass-soft);color:var(--brass)}
+  .crail .gear{margin-top:auto;color:var(--ink-faint)}
+  .feed{background:linear-gradient(180deg,var(--desk-2),var(--desk));border-right:1px solid var(--desk-line);padding:.7rem .6rem}
+  .feed .ft{font-family:var(--serif-d);font-weight:560;font-size:1rem;margin-bottom:.6rem;color:var(--ink-on-desk)}
+  .feed .card{padding:.45rem .5rem;border-radius:.4rem;margin-bottom:.2rem}
+  .feed .card.on{background:var(--desk-3)}
+  .feed .card .t{font-family:var(--serif-d);font-size:.78rem;color:var(--ink-on-desk);line-height:1.2}
+  .feed .card .d{font-size:.62rem;color:var(--ink-faint)}
+  .main{background:radial-gradient(120% 80% at 50% -10%,rgba(192,136,59,.06),transparent 60%),var(--desk);padding:1rem}
+  .topbar{display:flex;align-items:center;gap:.5rem;margin-bottom:1rem;font-family:var(--mono);font-size:.62rem;color:var(--ink-faint)}
+  .topbar .sp{flex:1}
+  .pill{font-family:var(--mono);font-size:.6rem;border:1px solid var(--desk-line);border-radius:999px;padding:.15rem .5rem;color:var(--ink-mute)}
+  .pill.brass{background:var(--brass);color:#221808;border-color:var(--brass)}
+  .pill.ghost{color:var(--ink-mute)}
+  /* parchment page */
+  .page{background:linear-gradient(180deg,var(--paper),var(--paper-2));color:var(--ink);border-radius:.4rem;padding:1.2rem 1.4rem}
+  .page .h1{font-family:var(--serif-d);font-weight:540;font-size:1.5rem;line-height:1.1;color:var(--ink);margin-bottom:.5rem}
+  .page p{color:var(--ink-soft);font-size:.85rem;margin:0 0 .5rem}
+  .page .tagrow{display:flex;gap:.3rem;margin-top:.6rem}
+  .tag{font-family:var(--mono);font-size:.6rem;background:var(--brass-soft);color:var(--brass-deep);border-radius:4px;padding:.1rem .4rem}
+  /* wizard / mapper */
+  .stepper{display:flex;gap:.5rem;padding:.8rem 1rem;background:#171310;border-bottom:1px solid var(--desk-line);font-family:var(--mono);font-size:.66rem}
+  .stepper .s{color:var(--ink-faint)} .stepper .s.on{color:var(--brass)} .stepper .s.done{color:var(--sage)}
+  .panel{padding:1.2rem}
+  .det-row{display:flex;align-items:center;gap:.8rem;padding:.7rem .9rem;background:var(--desk);border:1px solid var(--desk-line);border-radius:.5rem;margin-bottom:.5rem}
+  .det-row .g{width:1.6rem;text-align:center;color:var(--brass)}
+  .det-row .nm{font-family:var(--serif-d);font-size:1rem;color:var(--ink-on-desk)}
+  .det-row .fc{font-family:var(--mono);font-size:.62rem;color:var(--ink-faint)}
+  .det-row .arrow{margin-left:auto;color:var(--ink-faint);font-family:var(--mono);font-size:.7rem}
+  .det-row .sel{font-family:var(--mono);font-size:.66rem;background:var(--desk-3);border:1px solid var(--desk-line);border-radius:.4rem;padding:.25rem .5rem;color:var(--ink-on-desk)}
+  /* field-map buckets */
+  .bucket{margin:0 0 1rem}
+  .bucket .bh{font-family:var(--mono);font-size:.64rem;text-transform:uppercase;letter-spacing:.12em;margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem}
+  .bucket.req .bh{color:var(--brass)} .bucket.opt .bh{color:var(--ink-mute)} .bucket.raw .bh{color:var(--ink-faint)}
+  .maprow{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:.6rem;padding:.5rem .7rem;background:var(--desk);border:1px solid var(--desk-line);border-radius:.45rem;margin-bottom:.35rem}
+  .maprow .mf{font-family:var(--mono);font-size:.72rem;color:var(--ink-on-desk)} .maprow .mf .ty{color:var(--ink-faint);font-size:.62rem}
+  .maprow .mid{color:var(--ink-faint);font-family:var(--mono);font-size:.8rem}
+  .maprow .src{font-family:var(--mono);font-size:.7rem;background:var(--desk-3);border:1px solid var(--desk-line);border-radius:.4rem;padding:.2rem .5rem;color:var(--ink-mute);justify-self:start}
+  .maprow .src.ok{border-color:rgba(141,156,107,.5);color:#aebd8a}
+  .maprow .src.miss{border-color:rgba(192,125,84,.5);color:var(--rose)}
+  .raw-chips{display:flex;flex-wrap:wrap;gap:.35rem}
+  .raw-chip{font-family:var(--mono);font-size:.66rem;background:var(--desk);border:1px dashed var(--desk-line);border-radius:.4rem;padding:.25rem .5rem;color:var(--ink-mute)}
+  .btnrow{display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem}
+  .mbtn{font-family:var(--mono);font-size:.68rem;border:1px solid var(--desk-line);border-radius:.45rem;padding:.4rem .8rem;color:var(--ink-mute);background:transparent}
+  .mbtn.go{background:var(--brass);color:#221808;border-color:var(--brass)}
+  /* dialog */
+  .dlg{max-width:26rem;margin:1rem auto;background:var(--desk-2);border:1px solid var(--desk-line);border-radius:.6rem;padding:1.2rem}
+  .dlg .dt{font-family:var(--serif-d);font-size:1.2rem;margin-bottom:.5rem;color:var(--ink-on-desk)}
+  /* roadmap */
+  .ms{display:flex;gap:.9rem;padding:.8rem 0;border-bottom:1px solid var(--desk-line)}
+  .ms .mn{font-family:var(--mono);color:var(--brass);font-weight:600;flex:none;width:2.5rem}
+  .ms .mt{font-family:var(--serif-d);color:var(--ink-on-desk);font-weight:520;flex:none;width:13rem}
+  .ms .md{color:var(--ink-faint);font-size:.92rem}
+  @media(max-width:640px){.ms{flex-direction:column;gap:.2rem}.ms .mt{width:auto}.app{grid-template-columns:2.4rem 8rem 1fr}}
+  .fbk{font-family:var(--mono);font-size:.66rem;color:var(--ink-faint);background:var(--desk-2);border:1px dashed var(--desk-line);border-radius:.5rem;padding:.6rem .8rem;margin-top:1rem}
+  .qs{counter-reset:q}
+  .qs .q{background:var(--desk-2);border:1px solid var(--desk-line);border-radius:.5rem;padding:.9rem 1.1rem;margin-bottom:.6rem}
+  .qs .q b{color:var(--brass)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>scribe</h1>
+  <p class="tagline">A publishing client for whatever you built in Pages CMS.</p>
+  <p class="meta">Vision · Architecture · System Design · UI Strategy · UX Mockups &nbsp;|&nbsp; for review &amp; comment</p>
+</header>
+
+<p class="lead">This report lays out where scribe is going and, more importantly, <em>how it should
+feel to use</em> — especially the part that doesn't exist yet: going from "here is my Pages CMS
+site" to "here is my tailored editor," driven entirely through a UI. Sections are numbered so you
+can comment precisely ("§5.2, the field mapper…"). Mockups are deliberately drawn in scribe's own
+visual language so they read as real future screens, not a different product. Nothing here is built
+yet — it's for you to shoot holes in before we commit to workflows.</p>
+
+<h2><span class="num">1</span>Vision &amp; principles</h2>
+<p>scribe is a <strong>content publishing client</strong>, not a website builder. Pages CMS already
+lets you define a site with any collections and fields you like. scribe sits on your repo and makes
+<strong>writing and managing that content</strong> a first-class experience — tuned to <em>your</em>
+shapes, never a shape it imposes.</p>
+<ul>
+  <li><strong>Publish, don't design.</strong> No layouts, themes, templates, or type definitions. Those belong to your site and Pages CMS.</li>
+  <li><strong>Accommodate the author's schema.</strong> Your <code>.pages.yml</code> is the contract. scribe maps onto it and never asks you to change it.</li>
+  <li><strong>Preserve everything.</strong> Fields scribe has no dedicated editor for are kept verbatim and editable as raw fields. Round-trips never drop data.</li>
+  <li><strong>Core + plugins, no privileged internals.</strong> Each content type's editor is a plugin built on a public SDK. scribe ships great core plugins (block post editor, tag manager) on that same SDK.</li>
+  <li><strong>Forkable.</strong> "My blog uses three kinds of tags" is solved by forking a plugin, not patching scribe.</li>
+</ul>
+<div class="callout"><span class="k">The one-sentence test</span>An ordinary blog gets a beautiful
+post + tag editor out of the box; a bespoke site maps its types in a UI and forks a plugin when it
+wants something custom. <strong>Same tool, any site.</strong></div>
+
+<h2><span class="num">2</span>The core problem: schema → editor</h2>
+<p>The hard, interesting problem is the <strong>seam</strong> between an arbitrary Pages CMS schema and a
+focused editing experience. A blog-post editor wants a small, known content model — a title, a date,
+a body, maybe tags. A real site's collection has those <em>plus</em> whatever else the author dreamed
+up. scribe has to bind the known fields and gracefully carry the rest.</p>
+<p>Every field on a collection lands in one of three buckets. This is the heart of the whole product:</p>
+<div class="layers">
+  <div class="layer"><span class="n">A</span><span class="t">Mapped · required</span><span class="d">The experience cannot run without these (title, date, body). Must bind to a real field. Validated.</span></div>
+  <div class="layer"><span class="n">B</span><span class="t">Mapped · optional</span><span class="d">Bound if your schema has them (description, tags, draft, updatedDate). Hidden if not.</span></div>
+  <div class="layer"><span class="n">C</span><span class="t">Unmapped · raw</span><span class="d">Everything bespoke (coAuthor, projectName, hasVideo…). Edited via typed widgets + a YAML escape hatch. Never lost.</span></div>
+</div>
+<p>Get this seam right and scribe fits any site. Get it wrong and it only ever fits one blog. That's why
+the <strong>setup/mapping UX (§5.1–5.2)</strong> is the most important thing to nail early.</p>
+
+<h2><span class="num">3</span>System architecture</h2>
+<p>Seven layers, bottom up. Today only a hardcoded slice of this exists; the roadmap (§7) builds the rest.</p>
+<div class="layers">
+  <div class="layer"><span class="n">1</span><span class="t">Schema</span><span class="d">Parse <code>.pages.yml</code> → normalized collections + fields (name, type, required, list, options).</span></div>
+  <div class="layer"><span class="n">2</span><span class="t">Generic content</span><span class="d">A resource is <code>{collection, slug, fields:{…}, body?}</code>. Service reads/writes any collection; unknown fields preserved.</span></div>
+  <div class="layer"><span class="n">3</span><span class="t">Experience plugin</span><span class="d">Declares a content model (required/optional fields + roles) and renders an Editor. Core: blog-post, tag, generic.</span></div>
+  <div class="layer"><span class="n">4</span><span class="t">Mapping</span><span class="d"><code>.scribe.yml</code> binds a collection's fields to an experience's model. Three buckets (§2). Edited in the UI.</span></div>
+  <div class="layer"><span class="n">5</span><span class="t">Field widgets</span><span class="d">One widget per type (string, text, date, boolean, image, select, list, object, reference). Used by editors and the raw editor.</span></div>
+  <div class="layer"><span class="n">6</span><span class="t">Data access</span><span class="d">Hooks to list/get/save/create/delete any collection + find referencers — powers autocomplete, cross-type edits, cascades.</span></div>
+  <div class="layer"><span class="n">7</span><span class="t">Core SDK + plugins</span><span class="d">Exports the editors, widgets, hooks, contract types. Plugins (core &amp; third-party) build only on this.</span></div>
+</div>
+
+<h2><span class="num">4</span>UI strategy</h2>
+<ul>
+  <li><strong>Setup is a UI, not a config file you hand-edit.</strong> scribe auto-detects your collections from <code>.pages.yml</code>, proposes mappings, and lets you confirm/adjust visually. <code>.scribe.yml</code> is the <em>output</em>, not the interface.</li>
+  <li><strong>Progressive disclosure.</strong> The writing surface stays clean (title + body). Mapped optional fields live in a details panel. Raw/bespoke fields live one layer deeper, behind "more fields," with a "show me only what the editor doesn't already cover" filter.</li>
+  <li><strong>The editor is derived, not authored.</strong> What you see when editing a post is generated from the mapping. Change the mapping → the editor changes. No per-post layout work.</li>
+  <li><strong>Confidence about data.</strong> Always make it obvious that untouched/bespoke fields are safe. A visible "raw fields preserved" affordance beats a silent guarantee.</li>
+  <li><strong>Consistency with the writing room.</strong> Espresso chrome, parchment page, Fraunces/Newsreader. Setup and management screens are chrome (espresso); editing is paper.</li>
+</ul>
+
+<h2><span class="num">5</span>UX workflows &amp; mockups</h2>
+<p>The flows that matter, drawn. <strong>§5.1 and §5.2 are the new, unbuilt, highest-risk UX</strong> — please focus feedback there.</p>
+
+<h3>5.1 — First-run setup: auto-detect &amp; map</h3>
+<p>On first connect to a repo, scribe reads <code>.pages.yml</code>, lists the collections it found, and proposes
+an experience for each (matching by field shape: "has title + date + a rich-text field → looks like a blog post").
+You confirm or change, then map fields per type. The output is a committed <code>.scribe.yml</code>.</p>
+<div class="mock">
+  <div class="mock__bar"><span class="dot r"></span><span class="dot"></span><span class="dot"></span><span class="mock__url">scribe · set up this site</span></div>
+  <div class="stepper"><span class="s done">1 · Connect repo ✓</span><span class="s on">2 · Detected types</span><span class="s">3 · Map fields</span><span class="s">4 · Review &amp; save</span></div>
+  <div class="panel">
+    <p style="font-size:.95rem;color:var(--ink-mute);margin-bottom:1rem">Found <strong>3 collections</strong> in <code>.pages.yml</code>. scribe guessed an editor for each — adjust if needed.</p>
+    <div class="det-row"><span class="g">✎</span><span><div class="nm">posts</div><div class="fc">10 fields · title, date, description, tags, body +5</div></span><span class="arrow">maps to →</span><span class="sel">Blog post ▾</span></div>
+    <div class="det-row"><span class="g">#</span><span><div class="nm">tags</div><div class="fc">2 fields · name, description</div></span><span class="arrow">maps to →</span><span class="sel">Tag ▾</span></div>
+    <div class="det-row"><span class="g">◇</span><span><div class="nm">authors</div><div class="fc">4 fields · name, bio, avatar, links</div></span><span class="arrow">maps to →</span><span class="sel">Generic form ▾</span></div>
+    <div class="btnrow"><button class="mbtn">Back</button><button class="mbtn go">Map fields →</button></div>
+  </div>
+</div>
+<p class="figcap">§5.1 · detected-types step</p>
+<div class="callout callout--sage"><span class="k">Why a wizard, not a form</span>The first run is the one moment the
+mapping has your full attention. A guided flow with sensible guesses means most people click through in
+under a minute; power users slow down only on the types that need it. After setup, the same screens are
+reachable per-type from Settings (§5.5).</div>
+
+<h3>5.2 — The field mapper (the centerpiece)</h3>
+<p>For one collection + its chosen experience: bind the experience's model fields to your real fields. Required
+fields show a status (bound = sage, missing = rose). Optional fields bind when your schema has a match. Everything
+left over is shown as the raw bucket, so you can <em>see</em> exactly what will fall through to the raw editor.</p>
+<div class="mock">
+  <div class="mock__bar"><span class="dot r"></span><span class="dot"></span><span class="dot"></span><span class="mock__url">scribe · map “posts” → Blog post</span></div>
+  <div class="panel">
+    <div class="bucket req"><div class="bh">● required — must bind</div>
+      <div class="maprow"><span class="mf">title <span class="ty">text</span></span><span class="mid">←</span><span class="src ok">title ✓</span></div>
+      <div class="maprow"><span class="mf">date <span class="ty">date</span></span><span class="mid">←</span><span class="src ok">date ✓</span></div>
+      <div class="maprow"><span class="mf">body <span class="ty">markdown</span></span><span class="mid">←</span><span class="src ok">body (rich-text) ✓</span></div>
+    </div>
+    <div class="bucket opt"><div class="bh">○ optional — bound where present</div>
+      <div class="maprow"><span class="mf">description <span class="ty">text</span></span><span class="mid">←</span><span class="src ok">description ✓</span></div>
+      <div class="maprow"><span class="mf">tags <span class="ty">reference[]</span></span><span class="mid">←</span><span class="src ok">tags → tags ✓</span></div>
+      <div class="maprow"><span class="mf">draft <span class="ty">boolean</span></span><span class="mid">←</span><span class="src ok">draft ✓</span></div>
+      <div class="maprow"><span class="mf">updatedDate <span class="ty">date</span></span><span class="mid">←</span><span class="src miss">— not mapped ▾</span></div>
+    </div>
+    <div class="bucket raw"><div class="bh">▢ raw — carried as-is into “more fields”</div>
+      <div class="raw-chips">
+        <span class="raw-chip">hasVideo · boolean</span>
+        <span class="raw-chip">heroImage · image</span>
+        <span class="raw-chip">coAuthor · string</span>
+        <span class="raw-chip">projectName · string</span>
+      </div>
+    </div>
+    <div class="btnrow"><button class="mbtn">Back</button><button class="mbtn go">Looks right →</button></div>
+  </div>
+</div>
+<p class="figcap">§5.2 · field mapper — three buckets, live validation</p>
+<div class="callout"><span class="k">Decisions baked into this mockup</span>Direction reads <em>model ← yourField</em>
+(the editor's needs on the left, your schema on the right). Required-but-missing is the only thing that blocks
+saving. <code>tags</code> is recognized as a <em>reference</em> to the <code>tags</code> collection (Pages CMS has
+no native reference type, so this is a scribe convention you set here). The raw bucket is shown, not hidden — you
+always know what's carried as-is.</div>
+
+<h3>5.3 — Editing, derived from the mapping</h3>
+<p>The post editor you already have, now understood as <em>generated</em> from §5.2: title + body on the page;
+mapped optional fields in details; raw fields behind "more fields" with the filter. Nothing here is authored
+per-post.</p>
+<div class="mock">
+  <div class="mock__bar"><span class="dot r"></span><span class="dot"></span><span class="dot"></span><span class="mock__url">scribe.fisher.sh/#/posts/calsync</span></div>
+  <div class="mock__body"><div class="app">
+    <div class="crail"><span class="mk">s</span><span class="ci on">✎</span><span class="ci">#</span><span class="ci">◇</span><span class="ci gear">⚙</span></div>
+    <div class="feed"><div class="ft">Posts</div>
+      <div class="card on"><div class="t">Syncing my calendars</div><div class="d">2026-06-04 · draft</div></div>
+      <div class="card"><div class="t">Dream weather dashboard</div><div class="d">2026-05-18</div></div>
+      <div class="card"><div class="t">Trianglizer</div><div class="d">2025-11-15</div></div>
+    </div>
+    <div class="main">
+      <div class="topbar"><span class="pill ghost">viewing</span><span class="sp"></span><span class="pill">✎ edit</span><span class="pill">details</span><span class="pill">view live ↗</span><span class="pill brass">promote</span></div>
+      <div class="page">
+        <div class="h1">Syncing my calendars, both ways</div>
+        <p>A couple years ago I wrote a little Google Apps Script to copy my personal appointments onto my work calendar…</p>
+        <p>The whole thing comes down to the wall between work life and personal life…</p>
+        <div class="tagrow"><span class="tag">tools</span><span class="tag">go</span></div>
+      </div>
+    </div>
+  </div></div>
+</div>
+<p class="figcap">§5.3 · the editor is the mapping, rendered</p>
+<p>And the <strong>details</strong> panel — mapped optional fields up top, the raw bucket below the fold with the filter:</p>
+<div class="mock">
+  <div class="mock__bar"><span class="dot r"></span><span class="dot"></span><span class="dot"></span><span class="mock__url">details · posts/calsync</span></div>
+  <div class="panel" style="max-width:24rem">
+    <div class="bucket opt"><div class="bh">mapped fields</div>
+      <div class="maprow" style="grid-template-columns:1fr"><span class="mf">description <span class="ty">— A small tool that keeps my calendars in sync…</span></span></div>
+      <div class="maprow" style="grid-template-columns:1fr"><span class="mf">tags <span class="ty">tools · go · +add</span></span></div>
+      <div class="maprow" style="grid-template-columns:1fr"><span class="mf">draft <span class="ty">● on</span></span></div>
+    </div>
+    <div class="bucket raw"><div class="bh">more fields ▾ <span style="margin-left:auto;color:var(--ink-faint)">▣ only show unmapped</span></div>
+      <div class="maprow" style="grid-template-columns:1fr"><span class="mf">hasVideo <span class="ty">boolean · ○ off</span></span></div>
+      <div class="maprow" style="grid-template-columns:1fr"><span class="mf">heroImage <span class="ty">image · (none)</span></span></div>
+      <div class="maprow" style="grid-template-columns:1fr"><span class="mf">…edit raw YAML</span></div>
+    </div>
+  </div>
+</div>
+<p class="figcap">§5.3 · details — mapped, then raw with the filter</p>
+
+<h3>5.4 — References &amp; cascades</h3>
+<p>Because the data layer can read and edit any collection, references become rich. Tag autocomplete pulls live
+from the <code>tags</code> collection; editing a tag from inside a post is one click; renaming a tag offers to
+cascade to everything that points at it.</p>
+<div class="mock">
+  <div class="mock__bar"><span class="dot r"></span><span class="dot"></span><span class="dot"></span><span class="mock__url">tag editor · cascade</span></div>
+  <div class="dlg">
+    <div class="dt">Rename tag “go” → “golang”?</div>
+    <p style="color:var(--ink-mute);font-size:.9rem">This tag is referenced by <strong style="color:var(--ink-on-desk)">12 posts</strong>. Renaming the tag file would orphan them unless you update the references too.</p>
+    <div class="raw-chips" style="margin:.6rem 0 1rem"><span class="raw-chip">calsync</span><span class="raw-chip">trianglizer</span><span class="raw-chip">fizzics</span><span class="raw-chip">+9 more</span></div>
+    <div class="btnrow"><button class="mbtn">Rename tag only</button><button class="mbtn go">Rename &amp; update 12 posts</button></div>
+  </div>
+</div>
+<p class="figcap">§5.4 · cascade preview before a referencing change</p>
+
+<h3>5.5 — Managing types &amp; plugins (Settings)</h3>
+<p>After setup, the mapping is never hidden in a file. Settings → Resource types shows every collection, its
+experience, and its mapping health, with re-map and "open field mapper" right there. Plugins (core, installed,
+local) are listed and assignable.</p>
+<div class="mock">
+  <div class="mock__bar"><span class="dot r"></span><span class="dot"></span><span class="dot"></span><span class="mock__url">settings · resource types</span></div>
+  <div class="panel">
+    <div class="det-row"><span class="g">✎</span><span><div class="nm">posts</div><div class="fc">Blog post · 6 mapped · 4 raw</div></span><span class="arrow" style="color:var(--sage)">healthy</span><span class="sel">re-map ▾</span></div>
+    <div class="det-row"><span class="g">#</span><span><div class="nm">tags</div><div class="fc">Tag · 2 mapped</div></span><span class="arrow" style="color:var(--sage)">healthy</span><span class="sel">re-map ▾</span></div>
+    <div class="det-row"><span class="g">◇</span><span><div class="nm">authors</div><div class="fc">Generic form · all raw</div></span><span class="arrow" style="color:var(--rose)">no editor</span><span class="sel">choose ▾</span></div>
+    <p style="font-family:var(--mono);font-size:.66rem;color:var(--ink-faint);margin-top:1rem">Plugins: <span class="tag">core/blog-post</span> <span class="tag">core/tag</span> <span class="tag">core/generic</span> &nbsp;+ install / add local…</p>
+  </div>
+</div>
+<p class="figcap">§5.5 · types &amp; plugins management</p>
+
+<h2><span class="num">6</span>Plugin &amp; extensibility model</h2>
+<p>An experience plugin declares a content model (the fields it needs, with roles/types) and an <code>Editor</code>
+component that renders against mapped values + a data context. It consumes only the public SDK — the same one
+core uses. The SDK exports the document/markdown editor, a <code>ReferencePicker</code> (the tag chips,
+generalized), field widgets, the raw editor, and the data hooks. A shared editor (e.g. tags) is one import reused
+across plugins.</p>
+<div class="callout callout--rose"><span class="k">Decision to confirm</span><strong>Build-time plugins for v1.</strong>
+A deployment configures which plugins it uses (core, npm packages, or a local <code>plugins/</code> dir) and builds.
+Forking = fork the package, point your build at it. This covers both goals you named — public plugin packages
+<em>and</em> local deployment — without the bundling/trust problems of loading arbitrary JS at runtime. Runtime/dynamic
+plugin loading stays a deferred stretch, not designed-out.</div>
+
+<h2><span class="num">7</span>Roadmap</h2>
+<p>Each milestone stays shippable and keeps the current posts/tags working (guarded by the markdown round-trip tests). M1 is the keystone refactor.</p>
+<div class="ms"><span class="mn">M1</span><span class="mt">Schema-driven core</span><span class="md">Read <code>.pages.yml</code>; generic resource/store/API over any collection; posts+tags keep working through it.</span></div>
+<div class="ms"><span class="mn">M2</span><span class="mt">Experience contract + mapping</span><span class="md">Plugin interface; <code>.scribe.yml</code> + loader + validation; the setup wizard &amp; field mapper UI (§5.1–5.2).</span></div>
+<div class="ms"><span class="mn">M3</span><span class="mt">Field widgets + raw editor</span><span class="md">Widget-per-type library; the three-bucket editing surface incl. the raw editor + filter (§5.3).</span></div>
+<div class="ms"><span class="mn">M4</span><span class="mt">Data access + references</span><span class="md">Hooks to read/edit any collection; first-class reference fields; <code>ReferencePicker</code>.</span></div>
+<div class="ms"><span class="mn">M5</span><span class="mt">Cascades &amp; cross-edits</span><span class="md">Find referencers; cascade rename/delete with preview (§5.4); inline-edit a referenced resource.</span></div>
+<div class="ms"><span class="mn">M6</span><span class="mt">Core SDK + packaging</span><span class="md">Extract the SDK; build-time plugin registration; ship core plugins on the SDK; authoring docs + example plugin.</span></div>
+<div class="ms"><span class="mn">M7</span><span class="mt">Distribution + deferred infra</span><span class="md">Plugin API versioning; then staging/promote, image-upload plugin, k3s deploy, auth modes.</span></div>
+
+<h2><span class="num">8</span>Open questions — your call</h2>
+<div class="qs">
+  <div class="q"><b>Q1 · Mapper direction.</b> Does <em>model ← yourField</em> read right (§5.2), or would you rather see your schema on the left and pick a role on the right?</div>
+  <div class="q"><b>Q2 · Setup trigger.</b> Wizard on first connect (§5.1), or a quieter "scribe configured itself with guesses; review anytime" that never blocks you?</div>
+  <div class="q"><b>Q3 · Raw bucket visibility.</b> Show the raw bucket during mapping (§5.2) and behind "more fields" while editing (§5.3) — too much, or reassuring?</div>
+  <div class="q"><b>Q4 · References.</b> Is per-field "this is a reference to collection X" config (§5.2) the right level, or should scribe infer it?</div>
+  <div class="q"><b>Q5 · Plugins.</b> Build-time-only for v1 (§6) acceptable, or is drop-in runtime loading a hard requirement sooner?</div>
+  <div class="q"><b>Q6 · Cascades.</b> Should cascade-on-rename be default-on with a preview (§5.4), or always an explicit opt-in?</div>
+</div>
+
+<div class="fbk">Comment by section number (e.g. "§5.2: flip the mapper direction; §8 Q5: runtime needed for hosted multi-tenant"). I'll fold your notes into <code>docs/extensibility.md</code> and the GitHub issues before we build.</div>
+
+</div>
+</body>
+</html>
