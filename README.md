@@ -1,26 +1,45 @@
 # scribe
 
 A git-backed, writing-first editor for [`log.fisher.sh`](https://log.fisher.sh).
-Land in a document and write; deal with metadata at publish. Drafts live in a
-staging working tree and get promoted to `main`, which triggers the existing
-Astro deploy. Markdown + YAML frontmatter stay the source of truth, so posts
-remain editable in Typora or any editor, and Pages CMS keeps working as a
-fallback.
+Land in a document and write; deal with metadata at publish. Markdown + YAML
+frontmatter stay the source of truth, so posts remain editable in any editor and
+Pages CMS keeps working as a fallback.
 
-See [`docs/design.md`](docs/design.md) for the architecture and roadmap.
+See [`docs/design.md`](docs/design.md) for the architecture and roadmap, and
+[`CLAUDE.md`](CLAUDE.md) for working conventions.
 
 ## Status
 
-Pre-MVP. Project skeleton only.
+Usable locally. Reads/writes the real blog repo, full markdown round-trip
+(including verbatim raw HTML), block editor with slash commands, tables, images,
+callouts/embeds, drag-to-reorder, bubble toolbar + links, view/edit mode,
+private notes, create/rename/delete, theming. Not yet: git staging/promote
+(saves write straight to the working tree) and image upload.
 
 ## Stack
 
-- Go service (always-on) with a real git checkout as the staging working tree,
-  SQLite for private app-side metadata, HTTP/JSON API.
-- React + Vite + TipTap PWA for the editor.
+- **Service** (`cmd/scribe`, `internal/`): Go. File I/O over a blog repo
+  checkout + a private JSON notes store + an HTTP/JSON API. No auth of its own
+  (handled by whatever fronts it).
+- **Web** (`web/`): React + Vite + TipTap. The markdown <-> document pipeline
+  lives client-side in `web/src/editor/markdown.ts`.
 
-## Dev
+## Run locally
 
+```sh
+# service (point it at your blog repo checkout)
+GOWORK=off SCRIBE_REPO=/path/to/log go run ./cmd/scribe        # :8080
+
+# web (proxies /api + assets to the service)
+cd web && npm install && npm run dev                            # :4330
 ```
-go run ./cmd/scribe   # service (stub)
+
+Open http://localhost:4330. Vite binds to the LAN (`host: true`), so the
+`Network:` URL it prints works from a phone on the same Wi-Fi.
+
+## Test
+
+```sh
+GOWORK=off go test ./...     # service: frontmatter, slugs, notes store
+cd web && npm test           # web: markdown round-trip fidelity
 ```

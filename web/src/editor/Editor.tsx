@@ -1,20 +1,7 @@
 import { useEditor, EditorContent } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
-import Placeholder from '@tiptap/extension-placeholder'
-import Link from '@tiptap/extension-link'
-import Table from '@tiptap/extension-table'
-import TableRow from '@tiptap/extension-table-row'
-import TableHeader from '@tiptap/extension-table-header'
-import TableCell from '@tiptap/extension-table-cell'
-import { ImageBlock } from './ImageBlock'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { RawHtml } from './RawHtmlNode'
-import { Callout } from './CalloutNode'
-import { Figure } from './FigureNode'
-import { CodeBlock } from './CodeBlock'
-import { SlashCommand } from './SlashCommand'
-import { BubbleToolbar, LinkShortcut } from './BubbleToolbar'
-import GlobalDragHandle from 'tiptap-extension-global-drag-handle'
+import { BubbleToolbar } from './BubbleToolbar'
+import { editorExtensions } from './extensions'
 import { createMarkdownParser, serializeMarkdown } from './markdown'
 import type { MarkdownParser } from 'prosemirror-markdown'
 
@@ -39,33 +26,7 @@ export function Editor({ slug, title, body, editable, onEditTitle, onBody }: Pro
     slugRef.current = slug
 
     const editor = useEditor({
-        extensions: [
-            StarterKit.configure({ heading: { levels: [2, 3, 4] }, codeBlock: false }),
-            CodeBlock,
-            Placeholder.configure({
-                // Only the top-level paragraph/heading get a placeholder; without
-                // this, includeChildren painted it inside empty callouts and code
-                // blocks too.
-                includeChildren: false,
-                placeholder: ({ node }) => {
-                    if (node.type.name === 'heading') return 'Section title'
-                    if (node.type.name === 'paragraph') return "Write. Press '/' for blocks."
-                    return ''
-                },
-            }),
-            ImageBlock,
-            Link.configure({ openOnClick: false, autolink: false }),
-            RawHtml,
-            Callout,
-            Figure,
-            Table.configure({ resizable: false }),
-            TableRow,
-            TableHeader,
-            TableCell,
-            SlashCommand,
-            LinkShortcut,
-            GlobalDragHandle.configure({ dragHandleWidth: 22, scrollTreshold: 100 }),
-        ],
+        extensions: editorExtensions(),
         content: '',
         autofocus: false,
         editable,
