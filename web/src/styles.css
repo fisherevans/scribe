@@ -60,6 +60,7 @@ button { font-family: inherit; cursor: pointer; }
     border-right: 1px solid var(--desk-line);
     background: linear-gradient(180deg, var(--desk-2), var(--desk));
     overflow-y: auto;
+    overflow-x: hidden; /* otherwise overflow-y:auto implies x:auto and the rail scrolls sideways */
 }
 .app__scrim { display: none; }
 .app__main { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
@@ -211,7 +212,8 @@ button { font-family: inherit; cursor: pointer; }
     font-size: 1.3rem;
     line-height: 1;
 }
-.topbar__status { flex: 1; display: flex; align-items: center; gap: 0.6rem; }
+.topbar__status { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.6rem; overflow: hidden; }
+.topbar__status .status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .viewbadge {
     font-family: var(--mono);
     font-size: 0.62rem;
@@ -233,7 +235,14 @@ button { font-family: inherit; cursor: pointer; }
 .status--saving { color: var(--brass); }
 .status--saved { color: var(--sage); }
 .status--edited { color: var(--rose); }
-.topbar__actions { display: flex; gap: 0.5rem; }
+.topbar__actions { display: flex; align-items: center; gap: 0.5rem; }
+/* Desktop: secondary actions flow inline; the overflow button is hidden. */
+.topbar__more { display: contents; }
+.topbar__secondary { display: flex; align-items: center; gap: 0.5rem; }
+.topbar__overflow { display: none; }
+.topbar__scrim { display: none; }
+.topbar__label { display: none; } /* desktop shows the icon only */
+.topbar__ico { display: inline; }
 .btn {
     font-family: var(--mono);
     font-size: 0.72rem;
@@ -851,8 +860,10 @@ input[type='date'].field__input { font-family: var(--mono); font-size: 0.82rem; 
 
 
 /* ---- Feed controls (filter / sort) ------------------------------------- */
-.feed__controls { display: flex; align-items: center; gap: 0.4rem; padding: 0 0.5rem 0.7rem; }
+.feed__controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding: 0 0.5rem 0.7rem; }
 .ctrl {
+    flex: 1 1 6rem;
+    min-width: 0;
     font-family: var(--mono);
     font-size: 0.68rem;
     color: var(--ink-mute);
@@ -900,6 +911,33 @@ input[type='date'].field__input { font-family: var(--mono); font-size: 0.82rem; 
     .resizer { display: none; }
     .app__canvas { padding: 0.8rem 0.6rem 4rem; }
     .page { border-radius: 0.3rem; min-height: 40vh; padding-bottom: 3rem; }
+
+    /* Top bar: collapse secondary actions into an overflow menu. */
+    .topbar { gap: 0.5rem; padding: 0.6rem 0.8rem; }
+    .topbar__more { display: block; position: relative; }
+    .topbar__overflow { display: inline-grid; place-items: center; }
+    .topbar__secondary {
+        position: absolute;
+        top: calc(100% + 0.4rem);
+        right: 0;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.15rem;
+        background: var(--desk-2);
+        border: 1px solid var(--desk-line);
+        border-radius: 0.6rem;
+        padding: 0.3rem;
+        min-width: 10rem;
+        box-shadow: 0 16px 36px -14px rgba(0, 0, 0, 0.7);
+        z-index: 95;
+        display: none;
+    }
+    .topbar__secondary.is-open { display: flex; }
+    .topbar__secondary .btn { justify-content: flex-start; width: 100%; border-color: transparent; }
+    .topbar__secondary .btn:hover:not(:disabled), .topbar__secondary .btn--promote { border-color: var(--desk-line); }
+    .topbar__label { display: inline; }
+    .topbar__ico { display: inline-block; width: 1.3rem; text-align: center; }
+    .topbar__scrim { display: block; position: fixed; inset: 0; z-index: 90; }
 }
 @media (prefers-reduced-motion: reduce) {
     * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
