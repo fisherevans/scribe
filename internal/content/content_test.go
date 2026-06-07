@@ -6,137 +6,152 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/fisherevans/scribe/internal/schema"
 )
+
+func testSchema() *schema.Schema {
+	return &schema.Schema{Collections: []schema.Collection{
+		{Name: "posts", Path: "src/content/posts", Format: "yaml-frontmatter", Ext: ".md", Fields: []schema.Field{
+			{Name: "title", Type: "string", Required: true},
+			{Name: "date", Type: "date", Required: true},
+			{Name: "description", Type: "text"},
+			{Name: "tags", Type: "string", List: true},
+			{Name: "hasVideo", Type: "boolean"},
+			{Name: "heroImage", Type: "image"},
+			{Name: "updatedDate", Type: "date"},
+			{Name: "draft", Type: "boolean"},
+		}},
+		{Name: "tags", Path: "src/content/tags", Format: "yaml", Ext: ".yaml", Fields: []schema.Field{
+			{Name: "name", Type: "string", Required: true},
+			{Name: "description", Type: "string"},
+		}},
+	}}
+}
 
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 	repo := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(repo, "src", "content", "posts"), 0o755); err != nil {
-		t.Fatal(err)
+	for _, p := range []string{"src/content/posts", "src/content/tags"} {
+		if err := os.MkdirAll(filepath.Join(repo, p), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := os.MkdirAll(filepath.Join(repo, "src", "content", "tags"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return NewStore(repo)
+	return NewStore(repo, testSchema())
 }
 
-func TestSplitFrontmatter(t *testing.T) {
-	tests := []struct {
-		name      string
-		raw       string
-		wantFront string
-		wantBody  string
-	}{
-		{"basic", "---\ntitle: x\n---\nbody here\n", "title: x\n", "body here\n"},
-		{"no frontmatter", "just body\n", "", "just body\n"},
-		{"blank line after fm", "---\na: 1\n---\n\nbody\n", "a: 1\n", "body\n"},
-		{"unterminated", "---\ntitle: x\nbody", "", "---\ntitle: x\nbody"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			front, body := splitFrontmatter([]byte(tt.raw))
-			if string(front) != tt.wantFront {
-				t.Errorf("front = %q, want %q", front, tt.wantFront)
-			}
-			if body != tt.wantBody {
-				t.Errorf("body = %q, want %q", body, tt.wantBody)
-			}
-		})
-	}
-}
-
-func TestPostRoundTrip(t *testing.T) {
+func TestPostRoundTripAndFidelity(t *testing.T) {
 	s := newTestStore(t)
-	in := Post{
-		Slug:        "hello-world",
-		Title:       "Hello, World",
-		Date:        "2026-01-02",
-		Description: "A description: with a colon and \"quotes\"",
-		Tags:        []string{"alpha", "beta"},
-		HasVideo:    true,
-		UpdatedDate: "2026-01-03",
-		Draft:       true,
-		Body:        "# Heading\n\nSome **body** text.\n",
-	}
-	if err := s.WritePost(in); err != nil {
+	in := Resource{Slug: "hello", Body: "# Hi\n\nBody text.\n", Fields: map[string]any{
+		"title":       "Hello World",
+		"date":        "2026-01-02",
+		"description": "A description with a colon: yes",
+		"tags":        []any{"alpha", "beta"},
+		"hasVideo":    false,
+		"updatedDate": "2026-01-03",
+		"draft":       true,
+	}}
+	if err := s.Write("posts", in); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.ReadPost("hello-world")
+	raw, _ := os.ReadFile(s.path(mustCol(t, s, "posts"), "hello"))
+	got := string(raw)
+	// Type-aware rendering: dates and booleans bare, tags a block list.
+	for _, want := range []string{"date: 2026-01-02\n", "draft: true\n", "hasVideo: false\n", "tags:\n  - alpha\n  - beta\n", "updatedDate: 2026-01-03\n"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("frontmatter missing %q\n---\n%s", want, got)
+		}
+	}
+	// heroImage was empty/absent -> omitted.
+	if strings.Contains(got, "heroImage") {
+		t.Errorf("empty optional heroImage should be omitted:\n%s", got)
+	}
+
+	back, err := s.Read("posts", "hello")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Title != in.Title || got.Date != in.Date || got.Description != in.Description {
-		t.Errorf("scalar mismatch: got %+v", got)
+	if back.Fields["title"] != "Hello World" || back.Fields["date"] != "2026-01-02" {
+		t.Errorf("scalars not preserved: %+v", back.Fields)
 	}
-	if !reflect.DeepEqual(got.Tags, in.Tags) {
-		t.Errorf("tags = %v, want %v", got.Tags, in.Tags)
+	if back.Fields["draft"] != true || back.Fields["hasVideo"] != false {
+		t.Errorf("booleans not preserved as bool: %+v", back.Fields)
 	}
-	if got.HasVideo != in.HasVideo || got.Draft != in.Draft || got.UpdatedDate != in.UpdatedDate {
-		t.Errorf("flags mismatch: got %+v", got)
+	if !reflect.DeepEqual(back.Fields["tags"], []any{"alpha", "beta"}) {
+		t.Errorf("tags not preserved: %#v", back.Fields["tags"])
 	}
-	if strings.TrimSpace(got.Body) != strings.TrimSpace(in.Body) {
-		t.Errorf("body = %q, want %q", got.Body, in.Body)
+	if strings.TrimSpace(back.Body) != strings.TrimSpace(in.Body) {
+		t.Errorf("body = %q", back.Body)
 	}
 }
 
 func TestFrontmatterIdempotent(t *testing.T) {
 	s := newTestStore(t)
-	in := Post{Slug: "p", Title: "T", Date: "2026-01-02", Tags: []string{"x"}, Draft: true, Body: "hi\n"}
-	if err := s.WritePost(in); err != nil {
-		t.Fatal(err)
-	}
-	first, _ := os.ReadFile(s.postPath("p"))
-	got, _ := s.ReadPost("p")
-	if err := s.WritePost(*got); err != nil {
-		t.Fatal(err)
-	}
-	second, _ := os.ReadFile(s.postPath("p"))
+	s.Write("posts", Resource{Slug: "p", Body: "x\n", Fields: map[string]any{
+		"title": "T", "date": "2026-01-02", "tags": []any{"go"}, "draft": true, "hasVideo": false,
+	}})
+	first, _ := os.ReadFile(s.path(mustCol(t, s, "posts"), "p"))
+	r, _ := s.Read("posts", "p")
+	s.Write("posts", *r)
+	second, _ := os.ReadFile(s.path(mustCol(t, s, "posts"), "p"))
 	if string(first) != string(second) {
-		t.Errorf("not idempotent:\nfirst:\n%s\nsecond:\n%s", first, second)
+		t.Errorf("not idempotent:\n--first--\n%s\n--second--\n%s", first, second)
 	}
 }
 
-func TestEmptyTagsNotNil(t *testing.T) {
+func TestUnknownFieldPreserved(t *testing.T) {
 	s := newTestStore(t)
-	if err := s.WritePost(Post{Slug: "p", Title: "T", Date: "2026-01-02", Body: "x"}); err != nil {
+	s.Write("posts", Resource{Slug: "p", Body: "x", Fields: map[string]any{
+		"title": "T", "date": "2026-01-02", "hasVideo": false, "draft": false,
+		"coAuthor": "Lisa", // not in schema
+	}})
+	r, _ := s.Read("posts", "p")
+	if r.Fields["coAuthor"] != "Lisa" {
+		t.Errorf("unknown field dropped: %+v", r.Fields)
+	}
+}
+
+func TestYamlCollection(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.Write("tags", Resource{Slug: "go", Fields: map[string]any{"name": "Go", "description": "the language"}}); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := s.ReadPost("p")
-	if got.Tags == nil {
-		t.Error("Tags is nil; want non-nil empty slice so JSON marshals as []")
+	raw, _ := os.ReadFile(s.path(mustCol(t, s, "tags"), "go"))
+	if strings.Contains(string(raw), "---") {
+		t.Errorf("yaml collection should have no frontmatter fence:\n%s", raw)
+	}
+	r, _ := s.Read("tags", "go")
+	if r.Fields["name"] != "Go" || r.Body != "" {
+		t.Errorf("tag round-trip: %+v body=%q", r.Fields, r.Body)
 	}
 }
 
 func TestRenameAndDelete(t *testing.T) {
 	s := newTestStore(t)
-	if err := s.WritePost(Post{Slug: "old", Title: "T", Date: "2026-01-02", Body: "x"}); err != nil {
+	s.Write("posts", Resource{Slug: "old", Fields: map[string]any{"title": "T", "date": "2026-01-02", "hasVideo": false, "draft": false}})
+	if err := s.Rename("posts", "old", "new"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RenamePost("old", "new"); err != nil {
+	if _, err := os.Stat(s.path(mustCol(t, s, "posts"), "old")); !os.IsNotExist(err) {
+		t.Error("old file remains after rename")
+	}
+	s.Write("posts", Resource{Slug: "other", Fields: map[string]any{"title": "O", "date": "2026-01-02", "hasVideo": false, "draft": false}})
+	if err := s.Rename("posts", "new", "other"); err == nil {
+		t.Error("expected collision error")
+	}
+	if err := s.Delete("posts", "new"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(s.postPath("old")); !os.IsNotExist(err) {
-		t.Error("old file still exists after rename")
+	if _, err := os.Stat(s.path(mustCol(t, s, "posts"), "new")); !os.IsNotExist(err) {
+		t.Error("file remains after delete")
 	}
-	if _, err := os.Stat(s.postPath("new")); err != nil {
-		t.Error("new file missing after rename")
-	}
-	// rename onto an existing slug should fail
-	if err := s.WritePost(Post{Slug: "other", Title: "O", Date: "2026-01-02", Body: "y"}); err != nil {
+}
+
+func mustCol(t *testing.T, s *Store, name string) *schema.Collection {
+	t.Helper()
+	c, err := s.collection(name)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RenamePost("new", "other"); err == nil {
-		t.Error("expected collision error renaming onto existing slug")
-	}
-	// delete
-	if err := s.DeletePost("new"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(s.postPath("new")); !os.IsNotExist(err) {
-		t.Error("file still exists after delete")
-	}
-	// deleting a missing file is a no-op
-	if err := s.DeletePost("ghost"); err != nil {
-		t.Errorf("delete of missing file should be nil, got %v", err)
-	}
+	return c
 }

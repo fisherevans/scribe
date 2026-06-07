@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import type { CollectionDef } from '../collections'
-import type { Post, Resource } from '../types'
+import type { CollectionView } from '../collections'
+import type { Resource } from '../types'
+import { fbool, flist, fstr } from '../types'
 
 interface Props {
-    def: CollectionDef
+    view: CollectionView
     items: Resource[]
     activeSlug: string | null
     allTags: string[]
@@ -14,46 +15,30 @@ interface Props {
 
 type Sort = 'newest' | 'oldest' | 'draftsFirst' | 'title'
 
-export function Feed({ def, items, activeSlug, allTags, onSelect, onNew }: Props) {
-    const isPosts = def.name === 'posts'
+export function Feed({ view, items, activeSlug, allTags, onSelect, onNew }: Props) {
+    const isPosts = view.name === 'posts'
     const [sort, setSort] = useState<Sort>(isPosts ? 'newest' : 'title')
     const [tagFilter, setTagFilter] = useState<string>('all')
 
-    const view = useMemo(() => {
+    const shown = useMemo(() => {
         let list = items.slice()
-        if (isPosts && tagFilter !== 'all') {
-            list = list.filter((r) => (r as Post).tags?.includes(tagFilter))
-        }
-        const date = (r: Resource) => (r as Post).date || ''
-        const title = (r: Resource) => def.feedTitle(r).toLowerCase()
+        if (isPosts && tagFilter !== 'all') list = list.filter((r) => flist(r, 'tags').includes(tagFilter))
+        const date = (r: Resource) => fstr(r, 'date')
+        const title = (r: Resource) => view.feedTitle(r).toLowerCase()
         switch (sort) {
-            case 'newest':
-                list.sort((a, b) => date(b).localeCompare(date(a)))
-                break
-            case 'oldest':
-                list.sort((a, b) => date(a).localeCompare(date(b)))
-                break
-            case 'title':
-                list.sort((a, b) => title(a).localeCompare(title(b)))
-                break
-            case 'draftsFirst':
-                list.sort((a, b) => {
-                    const ad = (a as Post).draft ? 0 : 1
-                    const bd = (b as Post).draft ? 0 : 1
-                    return ad - bd || date(b).localeCompare(date(a))
-                })
-                break
+            case 'newest': list.sort((a, b) => date(b).localeCompare(date(a))); break
+            case 'oldest': list.sort((a, b) => date(a).localeCompare(date(b))); break
+            case 'title': list.sort((a, b) => title(a).localeCompare(title(b))); break
+            case 'draftsFirst': list.sort((a, b) => (fbool(a, 'draft') ? 0 : 1) - (fbool(b, 'draft') ? 0 : 1) || date(b).localeCompare(date(a))); break
         }
         return list
-    }, [items, sort, tagFilter, isPosts, def])
+    }, [items, sort, tagFilter, isPosts, view])
 
     return (
         <nav className="feed">
             <div className="feed__head">
-                <span className="feed__title">{def.label}</span>
-                <button className="feed__new" onClick={onNew} type="button">
-                    {def.newLabel}
-                </button>
+                <span className="feed__title">{view.label}</span>
+                <button className="feed__new" onClick={onNew} type="button">{view.newLabel}</button>
             </div>
 
             <div className="feed__controls">
@@ -66,46 +51,28 @@ export function Feed({ def, items, activeSlug, allTags, onSelect, onNew }: Props
                 {isPosts && (
                     <select className="ctrl" value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
                         <option value="all">All tags</option>
-                        {allTags.map((t) => (
-                            <option key={t} value={t}>
-                                #{t}
-                            </option>
-                        ))}
+                        {allTags.map((t) => <option key={t} value={t}>#{t}</option>)}
                     </select>
                 )}
-                <span className="feed__count">{view.length}</span>
+                <span className="feed__count">{shown.length}</span>
             </div>
 
             <ul className="feed__list">
-                {view.map((r, i) => {
-                    const sub = def.feedSub(r)
+                {shown.map((r, i) => {
+                    const sub = view.feedSub(r)
+                    const tags = isPosts ? flist(r, 'tags') : []
                     return (
-                        <motion.li
-                            key={r.slug}
-                            initial={{ opacity: 0, y: 6 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: Math.min(i, 12) * 0.02, duration: 0.2 }}
-                        >
-                            <button
-                                type="button"
-                                className={'card' + (r.slug === activeSlug ? ' is-active' : '')}
-                                onClick={() => onSelect(r.slug)}
-                            >
+                        <motion.li key={r.slug} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 12) * 0.02, duration: 0.2 }}>
+                            <button type="button" className={'card' + (r.slug === activeSlug ? ' is-active' : '')} onClick={() => onSelect(r.slug)}>
                                 <div className="card__meta">
-                                    {isPosts && <span className="card__date">{(r as Post).date}</span>}
-                                    {isPosts && (r as Post).draft && <span className="card__flag">draft</span>}
+                                    {isPosts && <span className="card__date">{fstr(r, 'date')}</span>}
+                                    {isPosts && fbool(r, 'draft') && <span className="card__flag">draft</span>}
                                     {r.dirty && <span className="card__flag card__flag--edit">edited</span>}
                                 </div>
-                                <div className="card__title">{def.feedTitle(r)}</div>
+                                <div className="card__title">{view.feedTitle(r)}</div>
                                 {sub && <div className="card__desc">{sub}</div>}
-                                {isPosts && ((r as Post).tags?.length ?? 0) > 0 && (
-                                    <div className="card__tags">
-                                        {(r as Post).tags.map((t) => (
-                                            <span key={t} className="tag">
-                                                {t}
-                                            </span>
-                                        ))}
-                                    </div>
+                                {tags.length > 0 && (
+                                    <div className="card__tags">{tags.map((t) => <span key={t} className="tag">{t}</span>)}</div>
                                 )}
                             </button>
                         </motion.li>

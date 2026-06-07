@@ -1,21 +1,15 @@
 import { Editor } from '../editor/Editor'
-import type { Post } from '../types'
+import type { ExperienceProps } from '../collections'
+import { fstr } from '../types'
 
-interface Props {
-    resource: Post
-    onPatch: (p: Partial<Post>) => void
-    onEditTitle?: () => void
-    editable?: boolean
-}
-
-// Posts get the document-first writing surface. The title is an immutable
-// header edited via a modal (onEditTitle); metadata is deferred to the publish
-// sheet (rendered by App).
-export function PostExperience({ resource, onPatch, onEditTitle, editable }: Props) {
+// Posts get the document-first writing surface. Title/metadata come from the
+// resource's fields; the body is the markdown. (Which field is "title"/"body"
+// is still assumed here for the posts collection; M2 makes that a mapping.)
+export function PostExperience({ resource, onPatch, onEditTitle, editable }: ExperienceProps) {
     return (
         <Editor
             slug={resource.slug}
-            title={resource.title}
+            title={fstr(resource, 'title')}
             body={resource.body}
             editable={editable ?? false}
             onEditTitle={onEditTitle ?? (() => {})}

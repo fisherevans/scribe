@@ -1,10 +1,11 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { FONT_OPTIONS, type Theme } from '../theme'
 import type { AppSettings } from '../settings'
-import { COLLECTION_ORDER, COLLECTIONS } from '../collections'
+import type { CollectionView } from '../collections'
 
 interface Props {
     open: boolean
+    views: CollectionView[]
     theme: Theme
     settings: AppSettings
     onTheme: (t: Theme) => void
@@ -17,7 +18,7 @@ interface Props {
 // looks, the hosted site, and how each resource type is edited. The Resource
 // Types section is the visible face of the experience registry - today it's
 // read-only; the design's .scribe.yml sidecar will make it editable per repo.
-export function SettingsPanel({ open, theme, settings, onTheme, onThemeReset, onSettings, onClose }: Props) {
+export function SettingsPanel({ open, views, theme, settings, onTheme, onThemeReset, onSettings, onClose }: Props) {
     const setT = (patch: Partial<Theme>) => onTheme({ ...theme, ...patch })
 
     return (
@@ -80,16 +81,13 @@ export function SettingsPanel({ open, theme, settings, onTheme, onThemeReset, on
                             <code> .scribe.yml</code> sidecar will make this editable per repo.
                         </p>
                         <ul className="typelist">
-                            {COLLECTION_ORDER.map((name) => {
-                                const c = COLLECTIONS[name]
-                                return (
-                                    <li key={name} className="typerow">
-                                        <span className="typerow__glyph">{c.glyph}</span>
-                                        <span className="typerow__name">{c.label}</span>
-                                        <span className="typerow__exp">{c.experienceLabel}</span>
-                                    </li>
-                                )
-                            })}
+                            {views.map((v) => (
+                                <li key={v.name} className="typerow">
+                                    <span className="typerow__glyph">{v.glyph}</span>
+                                    <span className="typerow__name">{v.label}</span>
+                                    <span className="typerow__exp">{v.experienceLabel}</span>
+                                </li>
+                            ))}
                         </ul>
                     </motion.aside>
                 </>

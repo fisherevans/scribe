@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from './api'
-import type { CollectionName, Post, Resource } from './types'
-import { COLLECTIONS, COLLECTION_ORDER } from './collections'
+import type { Resource, Schema } from './types'
+import { fstr } from './types'
+import { viewFor, type CollectionView, type ResourcePatch } from './collections'
 import { CollectionRail } from './components/CollectionRail'
 import { Feed } from './components/Feed'
 import { TopBar, type SaveStatus } from './components/TopBar'
@@ -12,37 +13,34 @@ import { applyTheme, DEFAULT_THEME, loadTheme, saveTheme, type Theme } from './t
 import { loadSettings, saveSettings, liveUrl, type AppSettings } from './settings'
 import { slugify, uniqueSlug } from './slug'
 
-type ByCollection<T> = Record<CollectionName, T>
-const emptyLists: ByCollection<Resource[]> = { posts: [], tags: [], snippets: [] }
-const emptySel: ByCollection<string | null> = { posts: null, tags: null, snippets: null }
-
 const loadRail = () => {
     const v = parseFloat(localStorage.getItem('scribe-rail') || '')
     return Number.isFinite(v) ? v : 19
 }
+const today = () => new Date().toISOString().slice(0, 10)
 
-// Hash routing: #/<collection>/<slug>. Hash (not path) so it never collides
-// with the /posts and /assets proxies, and reloads/bookmarks just work.
-function parseHash(): { collection?: CollectionName; slug?: string } {
-    const m = location.hash.match(/^#\/([a-z]+)(?:\/([^/]+))?/)
+// #/<collection>/<slug>
+function parseHash(): { collection?: string; slug?: string } {
+    const m = location.hash.match(/^#\/([a-z0-9-]+)(?:\/([^/]+))?/i)
     if (!m) return {}
-    return { collection: m[1] as CollectionName, slug: m[2] ? decodeURIComponent(m[2]) : undefined }
+    return { collection: m[1], slug: m[2] ? decodeURIComponent(m[2]) : undefined }
 }
-function writeHash(c: CollectionName, slug: string | null, replace = false) {
+function writeHash(c: string, slug: string | null, replace = false) {
     const h = `#/${c}${slug ? '/' + encodeURIComponent(slug) : ''}`
     if (location.hash !== h) history[replace ? 'replaceState' : 'pushState'](null, '', h)
 }
 
 export default function App() {
-    const [collection, setCollection] = useState<CollectionName>('posts')
-    const [lists, setLists] = useState<ByCollection<Resource[]>>(emptyLists)
-    const [sel, setSel] = useState<ByCollection<string | null>>(emptySel)
+    const [schema, setSchema] = useState<Schema | null>(null)
+    const [collection, setCollection] = useState<string>('')
+    const [lists, setLists] = useState<Record<string, Resource[]>>({})
+    const [sel, setSel] = useState<Record<string, string | null>>({})
     const [status, setStatus] = useState<SaveStatus>('idle')
     const [promoting, setPromoting] = useState(false)
     const [drawer, setDrawer] = useState(false)
     const [details, setDetails] = useState(false)
     const [settingsOpen, setSettingsOpen] = useState(false)
-    const [editMode, setEditMode] = useState(false) // posts open read-only; edit is explicit
+    const [editMode, setEditMode] = useState(false)
     const [modal, setModal] = useState<{ open: boolean; mode: 'new' | 'edit' }>({ open: false, mode: 'new' })
     const [theme, setTheme] = useState<Theme>(loadTheme)
     const [settings, setSettings] = useState<AppSettings>(loadSettings)
@@ -50,83 +48,64 @@ export default function App() {
     const saveTimer = useRef<number | null>(null)
     const railW = useRef(loadRail())
 
-    const def = COLLECTIONS[collection]
-    const items = lists[collection]
-    const activeSlug = sel[collection]
+    const views = useMemo<CollectionView[]>(() => {
+        if (!schema) return []
+        const vs = schema.collections.map(viewFor)
+        const pi = vs.findIndex((v) => v.name === schema.primary) // primary collection first
+        if (pi > 0) vs.unshift(vs.splice(pi, 1)[0])
+        return vs
+    }, [schema])
+    const view = views.find((v) => v.name === collection) ?? null
+    const items = lists[collection] ?? []
+    const activeSlug = sel[collection] ?? null
     const active = items.find((r) => r.slug === activeSlug) ?? null
+    const tagItems = lists['tags'] ?? []
+    const allTags = tagItems.map((t) => t.slug)
 
-    useEffect(() => {
-        applyTheme(theme)
-        saveTheme(theme)
-    }, [theme])
-
+    useEffect(() => { applyTheme(theme); saveTheme(theme) }, [theme])
     useEffect(() => saveSettings(settings), [settings])
+    useEffect(() => { document.body.classList.toggle('is-readonly', !editMode) }, [editMode])
+    useEffect(() => { document.documentElement.style.setProperty('--rail-w', railW.current + 'rem') }, [])
 
-    // Hide edit-only affordances (drag handle) when not in edit mode.
-    useEffect(() => {
-        document.body.classList.toggle('is-readonly', !editMode)
-    }, [editMode])
-
-    useEffect(() => {
-        document.documentElement.style.setProperty('--rail-w', railW.current + 'rem')
-    }, [])
-
-    // Size the app to the *visual* viewport so the on-screen keyboard (iOS) just
-    // shrinks the editing area instead of leaving a dead buffer below the page.
+    // Visual-viewport height (iOS keyboard).
     useEffect(() => {
         const vv = window.visualViewport
         if (!vv) return
         const update = () => document.documentElement.style.setProperty('--app-vh', `${vv.height}px`)
         update()
-        vv.addEventListener('resize', update)
-        vv.addEventListener('scroll', update)
-        return () => {
-            vv.removeEventListener('resize', update)
-            vv.removeEventListener('scroll', update)
-        }
+        vv.addEventListener('resize', update); vv.addEventListener('scroll', update)
+        return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update) }
     }, [])
 
+    // Load schema, then every collection's resources.
     useEffect(() => {
-        Promise.all(COLLECTION_ORDER.map((c) => api.list(c)))
-            .then((results) => {
-                const next = { ...emptyLists }
-                const firstSel = { ...emptySel }
-                COLLECTION_ORDER.forEach((c, i) => {
-                    next[c] = results[i]
-                    firstSel[c] = results[i][0]?.slug ?? null
-                })
-                // Honor the URL's collection/slug if present and valid.
+        api.schema()
+            .then(async (sch) => {
+                const names = sch.collections.map((c) => c.name)
+                const results = await Promise.all(names.map((c) => api.list(c)))
+                const nextLists: Record<string, Resource[]> = {}
+                const firstSel: Record<string, string | null> = {}
+                names.forEach((c, i) => { nextLists[c] = results[i] ?? []; firstSel[c] = results[i]?.[0]?.slug ?? null })
                 const init = parseHash()
-                const startCol = init.collection && COLLECTION_ORDER.includes(init.collection) ? init.collection : 'posts'
-                const ci = COLLECTION_ORDER.indexOf(startCol)
-                if (init.slug && results[ci]?.some((r) => r.slug === init.slug)) firstSel[startCol] = init.slug
-                setLists(next)
-                setSel(firstSel)
-                setCollection(startCol)
-                writeHash(startCol, firstSel[startCol], true)
+                const start = init.collection && names.includes(init.collection) ? init.collection : sch.primary || names[0]
+                if (init.slug && nextLists[start]?.some((r) => r.slug === init.slug)) firstSel[start] = init.slug
+                setSchema(sch); setLists(nextLists); setSel(firstSel); setCollection(start)
+                writeHash(start, firstSel[start], true)
             })
             .catch((e) => setLoadError(e instanceof Error ? e.message : String(e)))
     }, [])
 
-    // Sync state from the URL on back/forward and manual hash edits.
+    // Back/forward + manual hash edits.
     useEffect(() => {
         const onNav = () => {
             const { collection: c, slug } = parseHash()
-            if (c && (COLLECTION_ORDER as string[]).includes(c)) {
-                setCollection(c)
-                if (slug) setSel((cur) => ({ ...cur, [c]: slug }))
-                setEditMode(false) // navigating opens read-only
-            }
+            if (c) { setCollection(c); if (slug) setSel((cur) => ({ ...cur, [c]: slug })); setEditMode(false) }
         }
-        window.addEventListener('popstate', onNav)
-        window.addEventListener('hashchange', onNav)
-        return () => {
-            window.removeEventListener('popstate', onNav)
-            window.removeEventListener('hashchange', onNav)
-        }
+        window.addEventListener('popstate', onNav); window.addEventListener('hashchange', onNav)
+        return () => { window.removeEventListener('popstate', onNav); window.removeEventListener('hashchange', onNav) }
     }, [])
 
-    const queueSave = useCallback((c: CollectionName, resource: Resource) => {
+    const queueSave = useCallback((c: string, resource: Resource) => {
         setStatus('edited')
         if (saveTimer.current) window.clearTimeout(saveTimer.current)
         saveTimer.current = window.setTimeout(async () => {
@@ -135,16 +114,20 @@ export default function App() {
                 const next = await api.save(c, resource.slug, resource)
                 setLists((cur) => ({ ...cur, [c]: cur[c].map((r) => (r.slug === resource.slug ? next : r)) }))
                 setStatus('saved')
-            } catch {
-                setStatus('edited')
-            }
+            } catch { setStatus('edited') }
         }, 650)
     }, [])
 
     const patch = useCallback(
-        (p: Partial<Resource>) => {
+        (p: ResourcePatch) => {
             if (!active) return
-            const merged = { ...active, ...p, dirty: true } as Resource
+            const merged: Resource = {
+                ...active,
+                body: p.body !== undefined ? p.body : active.body,
+                notes: p.notes !== undefined ? p.notes : active.notes,
+                fields: p.fields ? { ...active.fields, ...p.fields } : active.fields,
+                dirty: true,
+            }
             setLists((cur) => ({ ...cur, [collection]: cur[collection].map((r) => (r.slug === merged.slug ? merged : r)) }))
             queueSave(collection, merged)
         },
@@ -156,112 +139,70 @@ export default function App() {
         setPromoting(true)
         const next = await api.promote(collection, active.slug)
         setLists((cur) => ({ ...cur, [collection]: cur[collection].map((r) => (r.slug === next.slug ? next : r)) }))
-        setPromoting(false)
-        setStatus('saved')
+        setPromoting(false); setStatus('saved')
     }, [active, collection])
 
-    // +write: posts open the title/slug modal; other collections create an
-    // untitled resource directly.
     const onNew = useCallback(async () => {
-        if (collection === 'posts') {
-            setModal({ open: true, mode: 'new' })
-            return
-        }
+        if (collection === 'posts') { setModal({ open: true, mode: 'new' }); return }
         const fresh = await api.create(collection)
-        setLists((cur) => ({ ...cur, [collection]: [fresh, ...cur[collection]] }))
+        setLists((cur) => ({ ...cur, [collection]: [fresh, ...(cur[collection] ?? [])] }))
         setSel((cur) => ({ ...cur, [collection]: fresh.slug }))
-        writeHash(collection, fresh.slug)
-        setStatus('idle')
-        setDrawer(false)
+        writeHash(collection, fresh.slug); setEditMode(true); setStatus('idle'); setDrawer(false)
     }, [collection])
 
     const createPost = useCallback(
         async (title: string, slug: string) => {
-            const uslug = uniqueSlug(slug || slugify(title), lists.posts.map((p) => p.slug))
-            const fresh: Post = {
-                kind: 'posts',
-                slug: uslug,
-                title,
-                date: new Date().toISOString().slice(0, 10),
-                description: '',
-                tags: [],
-                draft: true,
-                hasVideo: false,
-                updatedDate: '',
-                heroImage: '',
-                body: '',
-                state: 'staged',
-                dirty: false,
-                notes: '',
+            const uslug = uniqueSlug(slug || slugify(title), (lists['posts'] ?? []).map((p) => p.slug))
+            const fresh: Resource = {
+                collection: 'posts', slug: uslug, body: '', state: 'staged', dirty: false, notes: '',
+                fields: { title, date: today(), draft: true },
             }
-            const saved = (await api.save('posts', uslug, fresh)) as Post
-            setLists((cur) => ({ ...cur, posts: [saved, ...cur.posts] }))
+            const saved = await api.save('posts', uslug, fresh)
+            setLists((cur) => ({ ...cur, posts: [saved, ...(cur['posts'] ?? [])] }))
             setSel((cur) => ({ ...cur, posts: uslug }))
-            writeHash('posts', uslug)
-            setEditMode(true) // new post: go straight to editing
-            setStatus('saved')
-            setDrawer(false)
+            writeHash('posts', uslug); setEditMode(true); setStatus('saved'); setDrawer(false)
         },
-        [lists.posts],
+        [lists],
     )
 
-    // Edit title (and optionally slug) together: rename the file first, then
-    // write the new title under the final slug - avoids the debounced autosave
-    // racing the rename and leaving a stale file at the old slug.
     const applyTitleEdit = useCallback(
         async (title: string, slug: string) => {
             if (!active) return
             const from = active.slug
-            let merged = { ...active, title, dirty: true } as Post
+            let merged: Resource = { ...active, fields: { ...active.fields, title }, dirty: true }
             try {
-                if (slug !== from) {
-                    await api.rename('posts', from, slug)
-                    merged = { ...merged, slug }
-                }
-            } catch (e) {
-                alert(`Couldn't rename: ${e instanceof Error ? e.message : e}`)
-                return
-            }
-            const saved = (await api.save('posts', slug, merged)) as Post
-            setLists((cur) => ({ ...cur, posts: cur.posts.map((r) => (r.slug === from ? saved : r)) }))
-            setSel((cur) => ({ ...cur, posts: slug }))
-            writeHash('posts', slug, true)
-            setStatus('saved')
+                if (slug !== from) { await api.rename(collection, from, slug); merged = { ...merged, slug } }
+            } catch (e) { alert(`Couldn't rename: ${e instanceof Error ? e.message : e}`); return }
+            const saved = await api.save(collection, slug, merged)
+            setLists((cur) => ({ ...cur, [collection]: cur[collection].map((r) => (r.slug === from ? saved : r)) }))
+            setSel((cur) => ({ ...cur, [collection]: slug }))
+            writeHash(collection, slug, true); setStatus('saved')
         },
-        [active],
+        [active, collection],
     )
 
-    // Slug-only rename from the details pane.
     const rename = useCallback(async (from: string, toRaw: string) => {
         const to = slugify(toRaw)
         if (!to || to === from) return
         try {
-            await api.rename('posts', from, to)
-            setLists((cur) => ({ ...cur, posts: cur.posts.map((r) => (r.slug === from ? ({ ...r, slug: to } as Resource) : r)) }))
-            setSel((cur) => ({ ...cur, posts: to }))
-            writeHash('posts', to, true)
-        } catch (e) {
-            alert(`Couldn't rename: ${e instanceof Error ? e.message : e}`)
-        }
-    }, [])
+            await api.rename(collection, from, to)
+            setLists((cur) => ({ ...cur, [collection]: cur[collection].map((r) => (r.slug === from ? { ...r, slug: to } : r)) }))
+            setSel((cur) => ({ ...cur, [collection]: to }))
+            writeHash(collection, to, true)
+        } catch (e) { alert(`Couldn't rename: ${e instanceof Error ? e.message : e}`) }
+    }, [collection])
 
     const deleteActive = useCallback(async () => {
-        if (!active) return
-        if (!window.confirm(`Delete “${def.feedTitle(active)}”? This removes the file.`)) return
+        if (!active || !view) return
+        if (!window.confirm(`Delete “${view.feedTitle(active)}”? This removes the file.`)) return
         const slug = active.slug
-        try {
-            await api.remove(collection, slug)
-        } catch (e) {
-            alert(`Couldn't delete: ${e instanceof Error ? e.message : e}`)
-            return
-        }
-        const rest = lists[collection].filter((r) => r.slug !== slug)
+        try { await api.remove(collection, slug) } catch (e) { alert(`Couldn't delete: ${e instanceof Error ? e.message : e}`); return }
+        const rest = items.filter((r) => r.slug !== slug)
         const next = rest[0]?.slug ?? null
         setLists((cur) => ({ ...cur, [collection]: cur[collection].filter((r) => r.slug !== slug) }))
         setSel((cur) => ({ ...cur, [collection]: next }))
-        writeHash(collection, next, true)
-        setStatus('idle')
-    }, [active, collection, lists, def])
+        writeHash(collection, next, true); setDetails(false); setStatus('idle')
+    }, [active, view, collection, items])
 
     const onModalSubmit = useCallback(
         async (title: string, slug: string) => {
@@ -272,71 +213,46 @@ export default function App() {
         [modal.mode, createPost, applyTitleEdit],
     )
 
-    const select = useCallback(
-        (slug: string) => {
-            setSel((cur) => ({ ...cur, [collection]: slug }))
-            writeHash(collection, slug)
-            setEditMode(false)
-            setStatus('idle')
-            setDrawer(false)
-        },
-        [collection],
-    )
+    const select = useCallback((slug: string) => {
+        setSel((cur) => ({ ...cur, [collection]: slug })); writeHash(collection, slug); setEditMode(false); setStatus('idle'); setDrawer(false)
+    }, [collection])
 
-    const switchCollection = useCallback(
-        (c: CollectionName) => {
-            setCollection(c)
-            writeHash(c, sel[c])
-            setEditMode(false)
-            setStatus('idle')
-            setDetails(false)
-        },
-        [sel],
-    )
+    const switchCollection = useCallback((c: string) => {
+        setCollection(c); writeHash(c, sel[c] ?? null); setEditMode(false); setStatus('idle'); setDetails(false)
+    }, [sel])
 
-    // Drag-resize the feed rail (updates --rail-w live; persisted).
     const startResize = useCallback((e: React.PointerEvent) => {
         e.preventDefault()
-        const railPx = 3.6 * 16 // collection rail width
+        const railPx = 3.6 * 16
         const onMove = (ev: PointerEvent) => {
             const rem = Math.min(34, Math.max(13, (ev.clientX - railPx) / 16))
-            railW.current = rem
-            document.documentElement.style.setProperty('--rail-w', rem + 'rem')
+            railW.current = rem; document.documentElement.style.setProperty('--rail-w', rem + 'rem')
         }
         const onUp = () => {
-            window.removeEventListener('pointermove', onMove)
-            window.removeEventListener('pointerup', onUp)
-            document.body.style.cursor = ''
-            localStorage.setItem('scribe-rail', String(railW.current))
+            window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp)
+            document.body.style.cursor = ''; localStorage.setItem('scribe-rail', String(railW.current))
         }
         document.body.style.cursor = 'col-resize'
-        window.addEventListener('pointermove', onMove)
-        window.addEventListener('pointerup', onUp)
+        window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp)
     }, [])
-
-    const Experience = def.Experience
-    const allTags = lists.tags.map((t) => t.slug)
 
     if (loadError) {
         return (
-            <div className="crash">
-                <div className="crash__box">
-                    <h1 className="crash__title">Can’t reach the editor service</h1>
-                    <p className="crash__msg">{loadError}. Is the Go service running on :8080?</p>
-                    <button className="btn btn--promote" type="button" onClick={() => location.reload()}>
-                        retry
-                    </button>
-                </div>
-            </div>
+            <div className="crash"><div className="crash__box">
+                <h1 className="crash__title">Can’t reach the editor service</h1>
+                <p className="crash__msg">{loadError}. Is the Go service running on :8080?</p>
+                <button className="btn btn--promote" type="button" onClick={() => location.reload()}>retry</button>
+            </div></div>
         )
     }
 
+    const Experience = view?.Experience
     return (
         <div className={'app' + (drawer ? ' app--drawer' : '')}>
             <div className="app__nav">
-                <CollectionRail active={collection} onSelect={switchCollection} onSettings={() => setSettingsOpen(true)} />
+                <CollectionRail views={views} active={collection} onSelect={switchCollection} onSettings={() => setSettingsOpen(true)} />
                 <div className="app__feed">
-                    <Feed def={def} items={items} activeSlug={activeSlug} allTags={allTags} onSelect={select} onNew={onNew} />
+                    {view && <Feed view={view} items={items} activeSlug={activeSlug} allTags={allTags} onSelect={select} onNew={onNew} />}
                 </div>
                 <div className="resizer" onPointerDown={startResize} title="drag to resize" />
             </div>
@@ -345,53 +261,40 @@ export default function App() {
             <main className="app__main">
                 <TopBar
                     resource={active}
-                    showDetails={def.hasDetails}
-                    showEdit={def.name === 'posts'}
+                    showDetails={view?.hasDetails ?? false}
+                    showEdit={collection === 'posts'}
                     editMode={editMode}
                     status={status}
                     promoting={promoting}
-                    liveUrl={active ? liveUrl(settings.hostedDomain, def.livePath(active)) : null}
+                    liveUrl={active && view ? liveUrl(settings.hostedDomain, view.livePath(active)) : null}
                     onMenu={() => setDrawer((d) => !d)}
                     onToggleEdit={() => setEditMode((m) => !m)}
                     onDetails={() => setDetails(true)}
                     onPromote={promote}
                 />
                 <div className={'app__canvas' + (collection === 'posts' ? '' : ' app__canvas--form')}>
-                    {active ? (
-                        <Experience
-                            resource={active}
-                            onPatch={patch}
-                            onEditTitle={() => setModal({ open: true, mode: 'edit' })}
-                            onDelete={deleteActive}
-                            editable={editMode}
-                        />
+                    {active && view && Experience ? (
+                        <Experience resource={active} def={view.def} onPatch={patch} onEditTitle={() => setModal({ open: true, mode: 'edit' })} onDelete={deleteActive} editable={editMode} />
                     ) : (
-                        <div className="empty">Nothing here yet. Press “{def.newLabel}”.</div>
+                        <div className="empty">{view ? `Nothing here yet. Press “${view.newLabel}”.` : 'Loading…'}</div>
                     )}
                 </div>
             </main>
 
-            {def.hasDetails && (
-                <PublishSheet
-                    post={active && active.kind === 'posts' ? (active as Post) : null}
-                    allTags={allTags}
-                    open={details}
-                    onClose={() => setDetails(false)}
-                    onPatch={patch as (p: Partial<Post>) => void}
-                    onRename={rename}
-                    onDelete={deleteActive}
-                />
+            {view?.hasDetails && (
+                <PublishSheet resource={active} allTags={allTags} open={details} onClose={() => setDetails(false)} onPatch={patch} onRename={rename} onDelete={deleteActive} />
             )}
             <TitleSlugModal
                 open={modal.open}
                 mode={modal.mode}
-                initialTitle={modal.mode === 'edit' && active ? (active as Post).title : ''}
+                initialTitle={modal.mode === 'edit' && active ? fstr(active, 'title') : ''}
                 initialSlug={modal.mode === 'edit' && active ? active.slug : ''}
                 onCancel={() => setModal((m) => ({ ...m, open: false }))}
                 onSubmit={onModalSubmit}
             />
             <SettingsPanel
                 open={settingsOpen}
+                views={views}
                 theme={theme}
                 settings={settings}
                 onTheme={setTheme}

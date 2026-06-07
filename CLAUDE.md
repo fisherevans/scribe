@@ -7,10 +7,13 @@ is the practical "how to work in here" companion.
 ## Shape
 
 - **`cmd/scribe`, `internal/`** - Go service.
-  - `internal/content` - reads/writes posts (`.md` + YAML frontmatter) and tags
-    (`.yaml`) from a blog repo checkout. Frontmatter is re-emitted in a fixed
-    canonical style (hand-rolled in `marshalFrontmatter`, not yaml.Marshal, to
-    control quoting/order). Body bytes pass through untouched.
+  - `internal/schema` - parses `.pages.yml` into a normalized model (collections
+    + fields + types). Drives everything below.
+  - `internal/content` - **generic, schema-driven**. A resource is
+    `{slug, fields(open map), body}`, read/written for any collection. Frontmatter
+    is re-emitted in schema-field order with type-aware rendering (dates/booleans
+    bare, lists as block seqs) for byte-stable round-trips; unknown fields
+    preserved. Body bytes pass through untouched.
   - `internal/store` - private app-side metadata (notes). File-backed JSON under
     `SCRIBE_DATA` (default user config dir). **Never** written to the blog repo.
   - `internal/api` - HTTP/JSON. Resources are returned in the shape the web app
