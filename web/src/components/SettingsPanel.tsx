@@ -11,6 +11,7 @@ interface Props {
     onTheme: (t: Theme) => void
     onThemeReset: () => void
     onSettings: (s: AppSettings) => void
+    onConfigure: () => void
     onClose: () => void
 }
 
@@ -18,7 +19,7 @@ interface Props {
 // looks, the hosted site, and how each resource type is edited. The Resource
 // Types section is the visible face of the experience registry - today it's
 // read-only; the design's .scribe.yml sidecar will make it editable per repo.
-export function SettingsPanel({ open, views, theme, settings, onTheme, onThemeReset, onSettings, onClose }: Props) {
+export function SettingsPanel({ open, views, theme, settings, onTheme, onThemeReset, onSettings, onConfigure, onClose }: Props) {
     const setT = (patch: Partial<Theme>) => onTheme({ ...theme, ...patch })
 
     return (
@@ -89,6 +90,7 @@ export function SettingsPanel({ open, views, theme, settings, onTheme, onThemeRe
                                 </li>
                             ))}
                         </ul>
+                        <button className="btn btn--ghost theme__reset" type="button" onClick={onConfigure}>configure types &amp; mapping</button>
                     </motion.aside>
                 </>
             )}

@@ -1,4 +1,5 @@
 import type { Resource, Schema } from './types'
+import type { Mapping } from './mapping'
 
 // Generic client over the schema-driven service. Everything is keyed by
 // collection name discovered from /api/schema.
@@ -13,6 +14,16 @@ const R = (c: string, slug: string) => `${C(c)}/${encodeURIComponent(slug)}`
 export const api = {
     schema(): Promise<Schema> {
         return fetch('/api/schema').then(json)
+    },
+    mapping(): Promise<Mapping> {
+        return fetch('/api/mapping').then(json)
+    },
+    saveMapping(m: Mapping): Promise<Mapping> {
+        return fetch('/api/mapping', {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(m),
+        }).then(json)
     },
     list(c: string): Promise<Resource[]> {
         return fetch(C(c)).then(json)

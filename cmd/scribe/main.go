@@ -16,6 +16,7 @@ import (
 
 	"github.com/fisherevans/scribe/internal/api"
 	"github.com/fisherevans/scribe/internal/content"
+	"github.com/fisherevans/scribe/internal/mapping"
 	"github.com/fisherevans/scribe/internal/schema"
 	"github.com/fisherevans/scribe/internal/store"
 )
@@ -50,10 +51,11 @@ func main() {
 		log.Error("failed to open notes store", "data", *data, "err", err)
 		os.Exit(1)
 	}
+	mstore := mapping.NewStore(*repo)
 	publicDir := filepath.Join(*repo, "public")
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           api.New(cstore, notes, publicDir).Routes(),
+		Handler:           api.New(cstore, notes, mstore, publicDir).Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
