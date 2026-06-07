@@ -16,6 +16,7 @@ import (
 
 	"github.com/fisherevans/scribe/internal/api"
 	"github.com/fisherevans/scribe/internal/content"
+	"github.com/fisherevans/scribe/internal/schema"
 	"github.com/fisherevans/scribe/internal/store"
 )
 
@@ -36,7 +37,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	cstore := content.NewStore(*repo)
+	sch, err := schema.Load(*repo)
+	if err != nil {
+		log.Error("failed to read .pages.yml", "repo", *repo, "err", err)
+		os.Exit(1)
+	}
+	log.Info("loaded schema", "collections", len(sch.Collections))
+
+	cstore := content.NewStore(*repo, sch)
 	notes, err := store.OpenNotes(filepath.Join(*data, "notes.json"))
 	if err != nil {
 		log.Error("failed to open notes store", "data", *data, "err", err)

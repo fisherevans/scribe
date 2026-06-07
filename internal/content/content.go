@@ -1,12 +1,12 @@
-// Package content reads and writes the blog's on-disk source: markdown posts
-// with YAML frontmatter, and YAML tag files. It is the file-I/O half of scribe;
-// the markdown<->editor round-trip happens in the browser, so the body is
-// passed through here as opaque markdown text.
+// Package content reads and writes a site's on-disk content generically, driven
+// by the parsed schema (internal/schema). A resource is {slug, fields, body}:
+// frontmatter as an open map plus an optional markdown body. Any collection the
+// schema describes can be read/written; fields scribe doesn't recognize are
+// preserved verbatim.
 //
-// Frontmatter is re-emitted in a fixed canonical style (see marshalFrontmatter).
-// That means the first save of a hand-written file may normalize cosmetic YAML
-// (quoting, a folded description collapsing to one line), but field values are
-// preserved. Body bytes are written exactly as received.
+// Frontmatter is re-emitted in schema-field order with type-aware rendering
+// (dates and booleans bare, lists as block sequences), so known collections
+// round-trip byte-stable. The body passes through untouched.
 package content
 
 import (
@@ -14,217 +14,301 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
+	"github.com/fisherevans/scribe/internal/schema"
 	"gopkg.in/yaml.v3"
 )
 
-// Post mirrors the posts schema in src/content.config.ts. Every field is
-// preserved on round-trip so a save never silently drops frontmatter.
-type Post struct {
-	Slug        string   `json:"slug"`
-	Title       string   `json:"title"`
-	Date        string   `json:"date"`
-	Description string   `json:"description"`
-	Tags        []string `json:"tags"`
-	HasVideo    bool     `json:"hasVideo"`
-	HeroImage   string   `json:"heroImage"`
-	UpdatedDate string   `json:"updatedDate"`
-	Draft       bool     `json:"draft"`
-	Body        string   `json:"body"`
+// Resource is a single piece of content: its slug, its frontmatter fields as an
+// open map, and an optional markdown body (empty for yaml-only collections).
+type Resource struct {
+	Slug   string         `json:"slug"`
+	Fields map[string]any `json:"fields"`
+	Body   string         `json:"body"`
 }
 
-// Tag mirrors the tags schema (YAML files, name + description).
-type Tag struct {
-	Slug        string `json:"slug"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-}
-
-type fmYAML struct {
-	Title       string   `yaml:"title"`
-	Date        string   `yaml:"date"`
-	Description string   `yaml:"description"`
-	Tags        []string `yaml:"tags"`
-	HasVideo    bool     `yaml:"hasVideo"`
-	HeroImage   string   `yaml:"heroImage"`
-	UpdatedDate string   `yaml:"updatedDate"`
-	Draft       bool     `yaml:"draft"`
-}
-
-// Store is rooted at a blog repo checkout.
+// Store is rooted at a blog repo checkout and driven by its schema.
 type Store struct {
-	repo string
+	repo   string
+	schema *schema.Schema
 }
 
-func NewStore(repo string) *Store { return &Store{repo: repo} }
+func NewStore(repo string, s *schema.Schema) *Store { return &Store{repo: repo, schema: s} }
 
-func (s *Store) postsDir() string { return filepath.Join(s.repo, "src", "content", "posts") }
-func (s *Store) tagsDir() string  { return filepath.Join(s.repo, "src", "content", "tags") }
-func (s *Store) postPath(slug string) string {
-	return filepath.Join(s.postsDir(), slug+".md")
-}
-func (s *Store) tagPath(slug string) string {
-	return filepath.Join(s.tagsDir(), slug+".yaml")
-}
+func (s *Store) Schema() *schema.Schema { return s.schema }
 
-// ---- Posts --------------------------------------------------------------
-
-func (s *Store) ListPosts() ([]Post, error) {
-	entries, err := os.ReadDir(s.postsDir())
-	if err != nil {
-		return nil, fmt.Errorf("read posts dir: %w", err)
+func (s *Store) collection(name string) (*schema.Collection, error) {
+	c, ok := s.schema.Collection(name)
+	if !ok {
+		return nil, fmt.Errorf("unknown collection %q", name)
 	}
-	var posts []Post
+	return c, nil
+}
+
+func (s *Store) dir(c *schema.Collection) string { return filepath.Join(s.repo, c.Path) }
+func (s *Store) path(c *schema.Collection, slug string) string {
+	return filepath.Join(s.dir(c), slug+c.Ext)
+}
+
+// ---- read ---------------------------------------------------------------
+
+func (s *Store) List(name string) ([]Resource, error) {
+	c, err := s.collection(name)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(s.dir(c))
+	if err != nil {
+		return nil, fmt.Errorf("read %s dir: %w", name, err)
+	}
+	var out []Resource
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), c.Ext) {
 			continue
 		}
-		slug := strings.TrimSuffix(e.Name(), ".md")
-		p, err := s.ReadPost(slug)
+		slug := strings.TrimSuffix(e.Name(), c.Ext)
+		r, err := s.Read(name, slug)
 		if err != nil {
 			return nil, err
 		}
-		posts = append(posts, *p)
+		out = append(out, *r)
 	}
-	// Newest first by frontmatter date string (yyyy-mm-dd sorts lexically).
-	sort.Slice(posts, func(i, j int) bool { return posts[i].Date > posts[j].Date })
-	return posts, nil
+	sort.Slice(out, func(i, j int) bool { return out[i].Slug < out[j].Slug })
+	return out, nil
 }
 
-func (s *Store) ReadPost(slug string) (*Post, error) {
-	raw, err := os.ReadFile(s.postPath(slug))
+func (s *Store) Read(name, slug string) (*Resource, error) {
+	c, err := s.collection(name)
 	if err != nil {
-		return nil, fmt.Errorf("read post %q: %w", slug, err)
+		return nil, err
 	}
-	front, body := splitFrontmatter(raw)
-	var fm fmYAML
-	if len(front) > 0 {
-		if err := yaml.Unmarshal(front, &fm); err != nil {
-			return nil, fmt.Errorf("parse frontmatter %q: %w", slug, err)
-		}
+	raw, err := os.ReadFile(s.path(c, slug))
+	if err != nil {
+		return nil, fmt.Errorf("read %s/%s: %w", name, slug, err)
 	}
-	if fm.Tags == nil {
-		fm.Tags = []string{} // marshal as [] not null, so the client can read .length
+	var frontBytes []byte
+	var body string
+	if c.Format == "yaml-frontmatter" {
+		frontBytes, body = splitFrontmatter(raw)
+	} else {
+		frontBytes = raw
 	}
-	return &Post{
-		Slug:        slug,
-		Title:       fm.Title,
-		Date:        fm.Date,
-		Description: fm.Description,
-		Tags:        fm.Tags,
-		HasVideo:    fm.HasVideo,
-		HeroImage:   fm.HeroImage,
-		UpdatedDate: fm.UpdatedDate,
-		Draft:       fm.Draft,
-		Body:        body,
-	}, nil
+	fields, err := parseFields(c, frontBytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s/%s: %w", name, slug, err)
+	}
+	return &Resource{Slug: slug, Fields: fields, Body: body}, nil
 }
 
-func (s *Store) WritePost(p Post) error {
-	front := marshalFrontmatter(p)
-	body := strings.TrimLeft(p.Body, "\n")
-	out := "---\n" + front + "---\n" + body
+// ---- write --------------------------------------------------------------
+
+func (s *Store) Write(name string, r Resource) error {
+	c, err := s.collection(name)
+	if err != nil {
+		return err
+	}
+	out, err := s.build(c, r)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(s.path(c, r.Slug), out, 0o644)
+}
+
+// Serialize returns the bytes Write would produce, without touching disk.
+func (s *Store) Serialize(name string, r Resource) ([]byte, error) {
+	c, err := s.collection(name)
+	if err != nil {
+		return nil, err
+	}
+	return s.build(c, r)
+}
+
+func (s *Store) build(c *schema.Collection, r Resource) ([]byte, error) {
+	front := renderFields(c, r.Fields)
+	var out string
+	if c.Format == "yaml-frontmatter" {
+		out = "---\n" + front + "---\n" + strings.TrimLeft(r.Body, "\n")
+	} else {
+		out = front
+	}
 	if !strings.HasSuffix(out, "\n") {
 		out += "\n"
 	}
-	return os.WriteFile(s.postPath(p.Slug), []byte(out), 0o644)
+	return []byte(out), nil
 }
 
-// DeletePost removes a post file. A no-op if it doesn't exist (unsaved draft).
-func (s *Store) DeletePost(slug string) error {
-	err := os.Remove(s.postPath(slug))
-	if os.IsNotExist(err) {
-		return nil
+func (s *Store) Rename(name, from, to string) error {
+	c, err := s.collection(name)
+	if err != nil {
+		return err
 	}
-	return err
-}
-
-// DeleteTag removes a tag file. A no-op if it doesn't exist.
-func (s *Store) DeleteTag(slug string) error {
-	err := os.Remove(s.tagPath(slug))
-	if os.IsNotExist(err) {
-		return nil
-	}
-	return err
-}
-
-// RenamePost moves a post file from one slug to another. A no-op if the source
-// doesn't exist yet (an unsaved draft); errors if the target already exists.
-func (s *Store) RenamePost(from, to string) error {
-	src, dst := s.postPath(from), s.postPath(to)
+	src, dst := s.path(c, from), s.path(c, to)
 	if _, err := os.Stat(dst); err == nil {
-		return fmt.Errorf("a post named %q already exists", to)
+		return fmt.Errorf("%q already exists in %s", to, name)
 	}
 	if _, err := os.Stat(src); os.IsNotExist(err) {
-		return nil // unsaved draft - nothing on disk to move
+		return nil // unsaved draft
 	}
 	return os.Rename(src, dst)
 }
 
-// SerializePost returns the bytes WritePost would write, without touching disk.
-// Used to preview round-trip fidelity before any real save.
-func (s *Store) SerializePost(p Post) []byte {
-	front := marshalFrontmatter(p)
-	body := strings.TrimLeft(p.Body, "\n")
-	out := "---\n" + front + "---\n" + body
-	if !strings.HasSuffix(out, "\n") {
-		out += "\n"
+func (s *Store) Delete(name, slug string) error {
+	c, err := s.collection(name)
+	if err != nil {
+		return err
 	}
-	return []byte(out)
+	err = os.Remove(s.path(c, slug))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }
 
-// ---- Tags ---------------------------------------------------------------
+// ---- frontmatter parsing (YAML -> typed fields) ------------------------
 
-func (s *Store) ListTags() ([]Tag, error) {
-	entries, err := os.ReadDir(s.tagsDir())
-	if err != nil {
-		return nil, fmt.Errorf("read tags dir: %w", err)
+// parseFields decodes a YAML mapping into an open field map, using the schema's
+// field types so dates stay strings (not coerced to timestamps), booleans are
+// bools, and lists are string slices. Unknown fields are kept, typed from their
+// YAML tag.
+func parseFields(c *schema.Collection, front []byte) (map[string]any, error) {
+	fields := map[string]any{}
+	if len(front) == 0 {
+		return fields, nil
 	}
-	var tags []Tag
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(front, &doc); err != nil {
+		return nil, err
+	}
+	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return fields, nil
+	}
+	m := doc.Content[0]
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		key := m.Content[i].Value
+		val := m.Content[i+1]
+		var ftype string
+		if f, ok := c.Field(key); ok {
+			ftype = f.Type
+		}
+		fields[key] = nodeToValue(val, ftype)
+	}
+	return fields, nil
+}
+
+// nodeToValue converts a YAML node to a JSON-friendly Go value. ftype (the
+// schema field type, may be "") biases scalar handling; dates and timestamps
+// always stay strings.
+func nodeToValue(n *yaml.Node, ftype string) any {
+	switch n.Kind {
+	case yaml.SequenceNode:
+		out := make([]any, 0, len(n.Content))
+		for _, c := range n.Content {
+			out = append(out, nodeToValue(c, ""))
+		}
+		return out
+	case yaml.MappingNode:
+		out := map[string]any{}
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			out[n.Content[i].Value] = nodeToValue(n.Content[i+1], "")
+		}
+		return out
+	default: // scalar
+		switch ftype {
+		case "boolean":
+			b, _ := strconv.ParseBool(n.Value)
+			return b
+		case "number":
+			f, _ := strconv.ParseFloat(n.Value, 64)
+			return f
+		case "date", "string", "text", "image", "select", "rich-text", "code":
+			return n.Value
+		}
+		// unknown field: type from the YAML tag, but never coerce timestamps.
+		switch n.Tag {
+		case "!!bool":
+			b, _ := strconv.ParseBool(n.Value)
+			return b
+		case "!!int", "!!float":
+			f, _ := strconv.ParseFloat(n.Value, 64)
+			return f
+		default:
+			return n.Value
+		}
+	}
+}
+
+// ---- frontmatter rendering (typed fields -> YAML) ----------------------
+
+// renderFields emits schema fields in declared order, then any extra fields
+// (preserved, sorted), with type-aware formatting.
+func renderFields(c *schema.Collection, fields map[string]any) string {
+	var b strings.Builder
+	seen := map[string]bool{}
+	for _, f := range c.Fields {
+		seen[f.Name] = true
+		v, ok := fields[f.Name]
+		if !emit(f, v, ok) {
 			continue
 		}
-		slug := strings.TrimSuffix(e.Name(), ".yaml")
-		t, err := s.ReadTag(slug)
-		if err != nil {
-			return nil, err
+		b.WriteString(renderField(f, v))
+	}
+	// Extra fields not in the schema - preserve them.
+	var extra []string
+	for k := range fields {
+		if !seen[k] {
+			extra = append(extra, k)
 		}
-		tags = append(tags, *t)
 	}
-	sort.Slice(tags, func(i, j int) bool { return tags[i].Slug < tags[j].Slug })
-	return tags, nil
+	sort.Strings(extra)
+	for _, k := range extra {
+		b.WriteString(renderUnknown(k, fields[k]))
+	}
+	return b.String()
 }
 
-func (s *Store) ReadTag(slug string) (*Tag, error) {
-	raw, err := os.ReadFile(s.tagPath(slug))
+// emit decides whether a known field is written: required and boolean fields
+// always render; optional fields render only when non-empty (matching the
+// hand-written frontmatter's omit-empty behavior).
+func emit(f schema.Field, v any, present bool) bool {
+	if f.Required || f.Type == "boolean" {
+		return true
+	}
+	return present && !isEmpty(v)
+}
+
+func renderField(f schema.Field, v any) string {
+	if f.List {
+		items := toSlice(v)
+		var b strings.Builder
+		b.WriteString(f.Name + ":\n")
+		for _, it := range items {
+			b.WriteString("  - " + scalar(fmt.Sprint(it)) + "\n")
+		}
+		return b.String()
+	}
+	switch f.Type {
+	case "boolean":
+		return fmt.Sprintf("%s: %t\n", f.Name, truth(v))
+	case "date", "number":
+		return f.Name + ": " + fmt.Sprint(v) + "\n" // bare
+	default:
+		return f.Name + ": " + scalar(fmt.Sprint(v)) + "\n"
+	}
+}
+
+// renderUnknown preserves a field the schema doesn't describe via yaml.Marshal.
+func renderUnknown(k string, v any) string {
+	out, err := yaml.Marshal(map[string]any{k: v})
 	if err != nil {
-		return nil, fmt.Errorf("read tag %q: %w", slug, err)
+		return ""
 	}
-	var t struct {
-		Name        string `yaml:"name"`
-		Description string `yaml:"description"`
-	}
-	if err := yaml.Unmarshal(raw, &t); err != nil {
-		return nil, fmt.Errorf("parse tag %q: %w", slug, err)
-	}
-	return &Tag{Slug: slug, Name: t.Name, Description: t.Description}, nil
+	return string(out)
 }
 
-func (s *Store) WriteTag(t Tag) error {
-	var b strings.Builder
-	b.WriteString("name: " + yamlScalar(t.Name) + "\n")
-	if t.Description != "" {
-		b.WriteString("description: " + yamlScalar(t.Description) + "\n")
-	}
-	return os.WriteFile(s.tagPath(t.Slug), []byte(b.String()), 0o644)
-}
+// ---- helpers ------------------------------------------------------------
 
-// ---- frontmatter (de)serialization -------------------------------------
-
-// splitFrontmatter peels a leading `---\n…\n---` block, returning the YAML
-// bytes and the remaining body.
 func splitFrontmatter(raw []byte) (front []byte, body string) {
 	s := string(raw)
 	if !strings.HasPrefix(s, "---\n") && !strings.HasPrefix(s, "---\r\n") {
@@ -242,41 +326,35 @@ func splitFrontmatter(raw []byte) (front []byte, body string) {
 	return front, strings.TrimLeft(after, "\n")
 }
 
-// marshalFrontmatter emits the known fields in schema order, in a canonical
-// style: bare bool/date scalars, a block list for tags, and quoting only when
-// a string needs it. bools and date always render; optional strings are
-// omitted when empty.
-func marshalFrontmatter(p Post) string {
-	var b strings.Builder
-	b.WriteString("title: " + yamlScalar(p.Title) + "\n")
-	if p.Date != "" {
-		b.WriteString("date: " + p.Date + "\n")
+func isEmpty(v any) bool {
+	switch t := v.(type) {
+	case nil:
+		return true
+	case string:
+		return t == ""
+	case []any:
+		return len(t) == 0
+	case map[string]any:
+		return len(t) == 0
 	}
-	if p.Description != "" {
-		b.WriteString("description: " + yamlScalar(p.Description) + "\n")
-	}
-	if len(p.Tags) > 0 {
-		b.WriteString("tags:\n")
-		for _, t := range p.Tags {
-			b.WriteString("  - " + t + "\n")
-		}
-	}
-	b.WriteString(fmt.Sprintf("hasVideo: %t\n", p.HasVideo))
-	if p.HeroImage != "" {
-		b.WriteString("heroImage: " + yamlScalar(p.HeroImage) + "\n")
-	}
-	if p.UpdatedDate != "" {
-		b.WriteString("updatedDate: " + p.UpdatedDate + "\n")
-	}
-	b.WriteString(fmt.Sprintf("draft: %t\n", p.Draft))
-	return b.String()
+	return false
 }
 
-// yamlScalar quotes a string only when YAML would otherwise misread it (special
-// leading chars, colons, or strings that resemble another type). Uses yaml.v3
-// to do the escaping so edge cases are handled correctly, then strips the
-// trailing newline.
-func yamlScalar(v string) string {
+func toSlice(v any) []any {
+	if s, ok := v.([]any); ok {
+		return s
+	}
+	return nil
+}
+
+func truth(v any) bool {
+	b, _ := v.(bool)
+	return b
+}
+
+// scalar quotes a string only when YAML would otherwise misread it, using
+// yaml.v3 to do the escaping, then stripping the trailing newline.
+func scalar(v string) string {
 	out, err := yaml.Marshal(v)
 	if err != nil {
 		return fmt.Sprintf("%q", v)

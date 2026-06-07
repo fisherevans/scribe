@@ -1,7 +1,8 @@
-// Package api serves the editor's HTTP/JSON endpoints over a content.Store.
-// Resources are returned in the shape the web app expects (kind/slug/state/
-// dirty plus the type's own fields). Auth is intentionally absent here - it's
-// handled by whatever fronts the service (see design.md "Auth (swappable)").
+// Package api serves the editor's HTTP/JSON endpoints over a schema-driven
+// content.Store. Endpoints are generic over collection: the web discovers the
+// site's collections from /api/schema and edits any of them through /api/c/...
+// Resources carry their fields as an open map. Auth is handled by whatever
+// fronts the service (see design.md "Auth (swappable)").
 package api
 
 import (
@@ -10,7 +11,6 @@ import (
 	"math/rand"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/fisherevans/scribe/internal/content"
 	"github.com/fisherevans/scribe/internal/store"
@@ -28,119 +28,101 @@ func New(c *content.Store, notes *store.Notes, publicDir string) *Server {
 
 func (s *Server) Routes() *http.ServeMux {
 	mux := http.NewServeMux()
-	// Serve the repo's public/ so site-relative asset paths in posts
-	// (e.g. /posts/calsync/demo.svg, /assets/...) resolve in the editor. The
-	// specific /api/... patterns below take precedence over this catch-all.
+	// Serve the repo's public/ so site-relative asset paths in content resolve.
 	mux.Handle("/", http.FileServer(http.Dir(s.publicDir)))
 	mux.HandleFunc("GET /api/health", s.health)
-	mux.HandleFunc("GET /api/posts", s.listPosts)
-	mux.HandleFunc("POST /api/posts", s.createPost)
-	mux.HandleFunc("PUT /api/posts/{slug}", s.savePost)
-	mux.HandleFunc("DELETE /api/posts/{slug}", s.deletePost)
-	mux.HandleFunc("POST /api/posts/{slug}/promote", s.promotePost)
-	mux.HandleFunc("POST /api/posts/{slug}/rename", s.renamePost)
-	mux.HandleFunc("GET /api/posts/{slug}/serialized", s.serializedPost) // round-trip preview
-	mux.HandleFunc("GET /api/tags", s.listTags)
-	mux.HandleFunc("POST /api/tags", s.createTag)
-	mux.HandleFunc("PUT /api/tags/{slug}", s.saveTag)
-	mux.HandleFunc("DELETE /api/tags/{slug}", s.deleteTag)
-	mux.HandleFunc("POST /api/tags/{slug}/promote", s.promoteTag)
-	mux.HandleFunc("GET /api/snippets", emptyList) // not repo-backed; UI demo only
+	mux.HandleFunc("GET /api/schema", s.getSchema)
+	mux.HandleFunc("GET /api/c/{collection}", s.list)
+	mux.HandleFunc("POST /api/c/{collection}", s.create)
+	mux.HandleFunc("PUT /api/c/{collection}/{slug}", s.save)
+	mux.HandleFunc("DELETE /api/c/{collection}/{slug}", s.del)
+	mux.HandleFunc("POST /api/c/{collection}/{slug}/rename", s.rename)
+	mux.HandleFunc("POST /api/c/{collection}/{slug}/promote", s.promote)
+	mux.HandleFunc("GET /api/c/{collection}/{slug}/serialized", s.serialized)
 	return mux
 }
 
-// ---- resource envelopes -------------------------------------------------
-
-type postResource struct {
-	Kind string `json:"kind"`
-	content.Post
+// resource is the envelope the web consumes: the content resource plus app-side
+// state (staging axis, dirty, private notes).
+type resource struct {
+	Collection string `json:"collection"`
+	content.Resource
 	State string `json:"state"`
 	Dirty bool   `json:"dirty"`
 	Notes string `json:"notes"`
 }
 
-func (s *Server) postRes(p content.Post) postResource {
-	return postResource{Kind: "posts", Post: p, State: "promoted", Dirty: false, Notes: s.notes.Get("posts", p.Slug)}
+func (s *Server) wrap(collection string, r content.Resource) resource {
+	if r.Fields == nil {
+		r.Fields = map[string]any{}
+	}
+	return resource{Collection: collection, Resource: r, State: "promoted", Notes: s.notes.Get(collection, r.Slug)}
 }
 
-type tagResource struct {
-	Kind string `json:"kind"`
-	content.Tag
-	State string `json:"state"`
-	Dirty bool   `json:"dirty"`
+func (s *Server) getSchema(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, s.store.Schema())
 }
 
-func wrapTag(t content.Tag) tagResource {
-	return tagResource{Kind: "tags", Tag: t, State: "promoted", Dirty: false}
-}
-
-// ---- posts --------------------------------------------------------------
-
-func (s *Server) listPosts(w http.ResponseWriter, _ *http.Request) {
-	posts, err := s.store.ListPosts()
+func (s *Server) list(w http.ResponseWriter, r *http.Request) {
+	c := r.PathValue("collection")
+	rs, err := s.store.List(c)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	out := make([]postResource, len(posts))
-	for i, p := range posts {
-		out[i] = s.postRes(p)
+	out := make([]resource, len(rs))
+	for i, res := range rs {
+		out[i] = s.wrap(c, res)
 	}
 	writeJSON(w, out)
 }
 
-func (s *Server) savePost(w http.ResponseWriter, r *http.Request) {
-	var in postResource
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		fail(w, err)
-		return
-	}
-	in.Post.Slug = r.PathValue("slug")
-	if err := s.store.WritePost(in.Post); err != nil {
-		fail(w, err)
-		return
-	}
-	// Notes are private app-side metadata, stored outside the repo.
-	if err := s.notes.Set("posts", in.Post.Slug, in.Notes); err != nil {
-		fail(w, err)
-		return
-	}
-	saved, err := s.store.ReadPost(in.Post.Slug)
-	if err != nil {
-		fail(w, err)
-		return
-	}
-	writeJSON(w, s.postRes(*saved))
-}
-
-func (s *Server) createPost(w http.ResponseWriter, _ *http.Request) {
-	// No disk write until the first save - avoids littering the repo with empty
-	// drafts. The web prepends this to its list and writes the file on edit.
-	p := content.Post{
-		Slug:  fmt.Sprintf("untitled-%s", randSuffix()),
-		Date:  time.Now().Format("2006-01-02"),
-		Draft: true,
-		Tags:  []string{}, // marshal as [] not null, so the client can read it
-		Body:  "",
-	}
-	res := s.postRes(p)
+func (s *Server) create(w http.ResponseWriter, r *http.Request) {
+	// No disk write until first save - avoids littering the repo with empties.
+	res := s.wrap(r.PathValue("collection"), content.Resource{
+		Slug:   fmt.Sprintf("untitled-%s", randSuffix()),
+		Fields: map[string]any{},
+	})
 	res.State = "staged"
 	writeJSON(w, res)
 }
 
-func (s *Server) promotePost(w http.ResponseWriter, r *http.Request) {
-	// Staging/promote needs git; until then a save already lands in the working
-	// tree, so promote is a no-op that just echoes the current resource.
-	saved, err := s.store.ReadPost(r.PathValue("slug"))
+func (s *Server) save(w http.ResponseWriter, r *http.Request) {
+	c := r.PathValue("collection")
+	var in resource
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		fail(w, err)
+		return
+	}
+	in.Resource.Slug = r.PathValue("slug")
+	if err := s.store.Write(c, in.Resource); err != nil {
+		fail(w, err)
+		return
+	}
+	if err := s.notes.Set(c, in.Resource.Slug, in.Notes); err != nil {
+		fail(w, err)
+		return
+	}
+	saved, err := s.store.Read(c, in.Resource.Slug)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	res := s.postRes(*saved)
-	writeJSON(w, res)
+	writeJSON(w, s.wrap(c, *saved))
 }
 
-func (s *Server) renamePost(w http.ResponseWriter, r *http.Request) {
+func (s *Server) del(w http.ResponseWriter, r *http.Request) {
+	c, slug := r.PathValue("collection"), r.PathValue("slug")
+	if err := s.store.Delete(c, slug); err != nil {
+		fail(w, err)
+		return
+	}
+	_ = s.notes.Delete(c, slug)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) rename(w http.ResponseWriter, r *http.Request) {
+	c, from := r.PathValue("collection"), r.PathValue("slug")
 	var in struct {
 		To string `json:"to"`
 	}
@@ -148,7 +130,6 @@ func (s *Server) renamePost(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	from := r.PathValue("slug")
 	to := sanitizeSlug(in.To)
 	if to == "" {
 		http.Error(w, "invalid slug", http.StatusBadRequest)
@@ -158,91 +139,40 @@ func (s *Server) renamePost(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"slug": from})
 		return
 	}
-	if err := s.store.RenamePost(from, to); err != nil {
+	if err := s.store.Rename(c, from, to); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	_ = s.notes.Move("posts", from, to)
+	_ = s.notes.Move(c, from, to)
 	writeJSON(w, map[string]string{"slug": to})
 }
 
-func (s *Server) deletePost(w http.ResponseWriter, r *http.Request) {
-	slug := r.PathValue("slug")
-	if err := s.store.DeletePost(slug); err != nil {
+func (s *Server) promote(w http.ResponseWriter, r *http.Request) {
+	// Staging/promote needs git; until then a save already lands in the working
+	// tree, so promote echoes the current resource.
+	c, slug := r.PathValue("collection"), r.PathValue("slug")
+	saved, err := s.store.Read(c, slug)
+	if err != nil {
 		fail(w, err)
 		return
 	}
-	_ = s.notes.Delete("posts", slug)
-	w.WriteHeader(http.StatusNoContent)
+	writeJSON(w, s.wrap(c, *saved))
 }
 
-func (s *Server) deleteTag(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteTag(r.PathValue("slug")); err != nil {
+func (s *Server) serialized(w http.ResponseWriter, r *http.Request) {
+	c, slug := r.PathValue("collection"), r.PathValue("slug")
+	res, err := s.store.Read(c, slug)
+	if err != nil {
 		fail(w, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) serializedPost(w http.ResponseWriter, r *http.Request) {
-	slug := r.PathValue("slug")
-	p, err := s.store.ReadPost(slug)
+	out, err := s.store.Serialize(c, *res)
 	if err != nil {
 		fail(w, err)
 		return
 	}
 	w.Header().Set("content-type", "text/plain; charset=utf-8")
-	w.Write(s.store.SerializePost(*p))
-}
-
-// ---- tags ---------------------------------------------------------------
-
-func (s *Server) listTags(w http.ResponseWriter, _ *http.Request) {
-	tags, err := s.store.ListTags()
-	if err != nil {
-		fail(w, err)
-		return
-	}
-	out := make([]tagResource, len(tags))
-	for i, t := range tags {
-		out[i] = wrapTag(t)
-	}
-	writeJSON(w, out)
-}
-
-func (s *Server) saveTag(w http.ResponseWriter, r *http.Request) {
-	var in tagResource
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		fail(w, err)
-		return
-	}
-	in.Tag.Slug = r.PathValue("slug")
-	if err := s.store.WriteTag(in.Tag); err != nil {
-		fail(w, err)
-		return
-	}
-	saved, err := s.store.ReadTag(in.Tag.Slug)
-	if err != nil {
-		fail(w, err)
-		return
-	}
-	writeJSON(w, wrapTag(*saved))
-}
-
-func (s *Server) createTag(w http.ResponseWriter, _ *http.Request) {
-	t := content.Tag{Slug: fmt.Sprintf("untitled-%s", randSuffix())}
-	res := wrapTag(t)
-	res.State = "staged"
-	writeJSON(w, res)
-}
-
-func (s *Server) promoteTag(w http.ResponseWriter, r *http.Request) {
-	saved, err := s.store.ReadTag(r.PathValue("slug"))
-	if err != nil {
-		fail(w, err)
-		return
-	}
-	writeJSON(w, wrapTag(*saved))
+	w.Write(out)
 }
 
 // ---- helpers ------------------------------------------------------------
@@ -250,8 +180,6 @@ func (s *Server) promoteTag(w http.ResponseWriter, r *http.Request) {
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, map[string]string{"status": "ok"})
 }
-
-func emptyList(w http.ResponseWriter, _ *http.Request) { writeJSON(w, []struct{}{}) }
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("content-type", "application/json")
@@ -264,8 +192,7 @@ func fail(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), http.StatusInternalServerError)
 }
 
-// sanitizeSlug defensively normalizes a client-supplied slug to filename-safe
-// chars (the client slugifies too; this is the backstop against path tricks).
+// sanitizeSlug normalizes a client slug to filename-safe chars (backstop).
 func sanitizeSlug(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	var b strings.Builder
@@ -283,10 +210,10 @@ func sanitizeSlug(s string) string {
 }
 
 func randSuffix() string {
-	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+	const a = "abcdefghijklmnopqrstuvwxyz0123456789"
 	b := make([]byte, 4)
 	for i := range b {
-		b[i] = alphabet[rand.Intn(len(alphabet))]
+		b[i] = a[rand.Intn(len(a))]
 	}
 	return string(b)
 }
