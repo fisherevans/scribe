@@ -13,17 +13,19 @@ import (
 	"strings"
 
 	"github.com/fisherevans/scribe/internal/content"
+	"github.com/fisherevans/scribe/internal/mapping"
 	"github.com/fisherevans/scribe/internal/store"
 )
 
 type Server struct {
 	store     *content.Store
 	notes     *store.Notes
+	mapping   *mapping.Store
 	publicDir string
 }
 
-func New(c *content.Store, notes *store.Notes, publicDir string) *Server {
-	return &Server{store: c, notes: notes, publicDir: publicDir}
+func New(c *content.Store, notes *store.Notes, m *mapping.Store, publicDir string) *Server {
+	return &Server{store: c, notes: notes, mapping: m, publicDir: publicDir}
 }
 
 func (s *Server) Routes() *http.ServeMux {
@@ -32,6 +34,8 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.Handle("/", http.FileServer(http.Dir(s.publicDir)))
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/schema", s.getSchema)
+	mux.HandleFunc("GET /api/mapping", s.getMapping)
+	mux.HandleFunc("PUT /api/mapping", s.saveMapping)
 	mux.HandleFunc("GET /api/c/{collection}", s.list)
 	mux.HandleFunc("POST /api/c/{collection}", s.create)
 	mux.HandleFunc("PUT /api/c/{collection}/{slug}", s.save)
@@ -61,6 +65,28 @@ func (s *Server) wrap(collection string, r content.Resource) resource {
 
 func (s *Server) getSchema(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, s.store.Schema())
+}
+
+func (s *Server) getMapping(w http.ResponseWriter, _ *http.Request) {
+	m, err := s.mapping.Load()
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, m)
+}
+
+func (s *Server) saveMapping(w http.ResponseWriter, r *http.Request) {
+	var m mapping.Mapping
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		fail(w, err)
+		return
+	}
+	if err := s.mapping.Write(&m); err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, m)
 }
 
 func (s *Server) list(w http.ResponseWriter, r *http.Request) {
