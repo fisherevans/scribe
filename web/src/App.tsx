@@ -3,6 +3,7 @@ import { api } from './api'
 import type { Resource, Schema } from './types'
 import { fstr } from './types'
 import { viewFor, type CollectionView, type ResourcePatch } from './collections'
+import { resolve, type Mapping } from './mapping'
 import { CollectionRail } from './components/CollectionRail'
 import { Feed } from './components/Feed'
 import { TopBar, type SaveStatus } from './components/TopBar'
@@ -32,6 +33,7 @@ function writeHash(c: string, slug: string | null, replace = false) {
 
 export default function App() {
     const [schema, setSchema] = useState<Schema | null>(null)
+    const [mapping, setMapping] = useState<Mapping | null>(null)
     const [collection, setCollection] = useState<string>('')
     const [lists, setLists] = useState<Record<string, Resource[]>>({})
     const [sel, setSel] = useState<Record<string, string | null>>({})
@@ -48,13 +50,14 @@ export default function App() {
     const saveTimer = useRef<number | null>(null)
     const railW = useRef(loadRail())
 
+    const resolved = useMemo(() => (schema ? resolve(schema, mapping) : null), [schema, mapping])
     const views = useMemo<CollectionView[]>(() => {
-        if (!schema) return []
-        const vs = schema.collections.map(viewFor)
+        if (!schema || !resolved) return []
+        const vs = schema.collections.map((def) => viewFor(def, resolved.collections[def.name]))
         const pi = vs.findIndex((v) => v.name === schema.primary) // primary collection first
         if (pi > 0) vs.unshift(vs.splice(pi, 1)[0])
         return vs
-    }, [schema])
+    }, [schema, resolved])
     const view = views.find((v) => v.name === collection) ?? null
     const items = lists[collection] ?? []
     const activeSlug = sel[collection] ?? null
@@ -79,8 +82,8 @@ export default function App() {
 
     // Load schema, then every collection's resources.
     useEffect(() => {
-        api.schema()
-            .then(async (sch) => {
+        Promise.all([api.schema(), api.mapping()])
+            .then(async ([sch, map]) => {
                 const names = sch.collections.map((c) => c.name)
                 const results = await Promise.all(names.map((c) => api.list(c)))
                 const nextLists: Record<string, Resource[]> = {}
@@ -89,7 +92,7 @@ export default function App() {
                 const init = parseHash()
                 const start = init.collection && names.includes(init.collection) ? init.collection : sch.primary || names[0]
                 if (init.slug && nextLists[start]?.some((r) => r.slug === init.slug)) firstSel[start] = init.slug
-                setSchema(sch); setLists(nextLists); setSel(firstSel); setCollection(start)
+                setSchema(sch); setMapping(map); setLists(nextLists); setSel(firstSel); setCollection(start)
                 writeHash(start, firstSel[start], true)
             })
             .catch((e) => setLoadError(e instanceof Error ? e.message : String(e)))
@@ -274,7 +277,7 @@ export default function App() {
                 />
                 <div className={'app__canvas' + (collection === 'posts' ? '' : ' app__canvas--form')}>
                     {active && view && Experience ? (
-                        <Experience resource={active} def={view.def} onPatch={patch} onEditTitle={() => setModal({ open: true, mode: 'edit' })} onDelete={deleteActive} editable={editMode} />
+                        <Experience resource={active} def={view.def} map={view.map} onPatch={patch} onEditTitle={() => setModal({ open: true, mode: 'edit' })} onDelete={deleteActive} editable={editMode} />
                     ) : (
                         <div className="empty">{view ? `Nothing here yet. Press “${view.newLabel}”.` : 'Loading…'}</div>
                     )}
@@ -282,7 +285,7 @@ export default function App() {
             </main>
 
             {view?.hasDetails && (
-                <PublishSheet resource={active} allTags={allTags} open={details} onClose={() => setDetails(false)} onPatch={patch} onRename={rename} onDelete={deleteActive} />
+                <PublishSheet resource={active} map={view.map} def={view.def} allTags={allTags} open={details} onClose={() => setDetails(false)} onPatch={patch} onRename={rename} onDelete={deleteActive} />
             )}
             <TitleSlugModal
                 open={modal.open}

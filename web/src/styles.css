@@ -779,6 +779,11 @@ body.is-readonly .drag-handle { display: none !important; }
 .field__input--notes { font-family: var(--mono); font-size: 0.82rem; line-height: 1.55; }
 .field__input--mono { font-family: var(--mono); font-size: 0.82rem; }
 .field--notes { border-top: 1px dashed var(--desk-line); padding-top: 1.2rem; }
+.advanced__toggle { display: flex; align-items: center; gap: 0.4rem; width: 100%; background: none; border: none; font-family: var(--mono); font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-faint); padding: 0.3rem 0; cursor: pointer; }
+.advanced__toggle:hover { color: var(--ink-mute); }
+.advanced__count { background: var(--desk-3); border: 1px solid var(--desk-line); border-radius: 999px; padding: 0 0.4rem; color: var(--ink-mute); }
+.advanced { margin-top: 0.5rem; padding: 0.7rem; background: var(--desk); border: 1px solid var(--desk-line); border-radius: 0.5rem; }
+.advanced .field:last-child { margin-bottom: 0; }
 input[type='date'].field__input { font-family: var(--mono); font-size: 0.82rem; color-scheme: dark; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; background: var(--desk); border: 1px solid var(--desk-line); border-radius: 0.5rem; padding: 0.4rem; }

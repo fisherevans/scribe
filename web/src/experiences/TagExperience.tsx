@@ -1,8 +1,10 @@
 import type { ExperienceProps } from '../collections'
 import { fstr } from '../types'
 
-// Tags get a bespoke simple form over the name + description fields.
-export function TagExperience({ resource, onPatch, onDelete }: ExperienceProps) {
+// Tags get a bespoke simple form over the mapped name + description fields.
+export function TagExperience({ resource, map, onPatch, onDelete }: ExperienceProps) {
+    const nameField = map.name || 'name'
+    const descField = map.description || 'description'
     return (
         <div className="formcard">
             <div className="formcard__head">
@@ -13,9 +15,9 @@ export function TagExperience({ resource, onPatch, onDelete }: ExperienceProps) 
                 <span className="ffield__label">name</span>
                 <input
                     className="ffield__input ffield__input--lg"
-                    value={fstr(resource, 'name')}
+                    value={fstr(resource, nameField)}
                     placeholder="Display name"
-                    onChange={(e) => onPatch({ fields: { name: e.target.value } })}
+                    onChange={(e) => onPatch({ fields: { [nameField]: e.target.value } })}
                 />
             </label>
             <label className="ffield">
@@ -23,9 +25,9 @@ export function TagExperience({ resource, onPatch, onDelete }: ExperienceProps) 
                 <textarea
                     className="ffield__input"
                     rows={4}
-                    value={fstr(resource, 'description')}
+                    value={fstr(resource, descField)}
                     placeholder="Shown on the tag's listing page. Optional."
-                    onChange={(e) => onPatch({ fields: { description: e.target.value } })}
+                    onChange={(e) => onPatch({ fields: { [descField]: e.target.value } })}
                 />
             </label>
             {onDelete && (
