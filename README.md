@@ -41,12 +41,21 @@ slice this was built on.
 
 ## Status
 
-A working vertical slice for one site (`log.fisher.sh`): reads/writes the real
-repo, full markdown round-trip including verbatim raw HTML, block editor (slash
-commands, tables, images, callouts, embeds, drag-to-reorder, bubble toolbar +
-links), view/edit mode, private notes, create/rename/delete, theming, settings.
-Posts and tags are still hardcoded - generalizing that into the schema-driven
-plugin system above is the active work.
+**Schema-driven and mapping-configurable** (milestones M1–M2 done). scribe reads
+any site's `.pages.yml`, auto-detects collections + fields, and a first-run
+setup wizard recommends and lets you confirm how each collection maps to an
+editing experience (blog-post, tag, or a generic auto-form), writing `.scribe.yml`.
+Editors are driven by that mapping; unmapped fields are preserved and editable
+under "additional fields". Core editor: full markdown round-trip including
+verbatim raw HTML, block editor (slash commands, tables, images, callouts,
+embeds, drag-to-reorder, bubble toolbar + links), view/edit mode, private notes,
+create/rename/delete, theming, "view live" links.
+
+Next (M3–M6): a shared field-widget library, a data-access layer with references
+and cascades (tag autocomplete that edits/renames across posts), and extracting
+the plugin SDK so experiences are forkable folder-based plugins. See
+[docs/extensibility.md](docs/extensibility.md) and the
+[GitHub milestones](https://github.com/fisherevans/scribe/milestones).
 
 ## Stack
 
