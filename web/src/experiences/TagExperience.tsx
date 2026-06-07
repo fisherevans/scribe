@@ -1,14 +1,8 @@
-import type { Tag } from '../types'
+import type { ExperienceProps } from '../collections'
+import { fstr } from '../types'
 
-interface Props {
-    resource: Tag
-    onPatch: (p: Partial<Tag>) => void
-    onDelete?: () => void
-}
-
-// Tags get a bespoke simple form - no document surface, just the two fields the
-// schema defines. The slug is derived/fixed (it's the filename), shown read-only.
-export function TagExperience({ resource, onPatch, onDelete }: Props) {
+// Tags get a bespoke simple form over the name + description fields.
+export function TagExperience({ resource, onPatch, onDelete }: ExperienceProps) {
     return (
         <div className="formcard">
             <div className="formcard__head">
@@ -19,9 +13,9 @@ export function TagExperience({ resource, onPatch, onDelete }: Props) {
                 <span className="ffield__label">name</span>
                 <input
                     className="ffield__input ffield__input--lg"
-                    value={resource.name}
+                    value={fstr(resource, 'name')}
                     placeholder="Display name"
-                    onChange={(e) => onPatch({ name: e.target.value })}
+                    onChange={(e) => onPatch({ fields: { name: e.target.value } })}
                 />
             </label>
             <label className="ffield">
@@ -29,9 +23,9 @@ export function TagExperience({ resource, onPatch, onDelete }: Props) {
                 <textarea
                     className="ffield__input"
                     rows={4}
-                    value={resource.description}
+                    value={fstr(resource, 'description')}
                     placeholder="Shown on the tag's listing page. Optional."
-                    onChange={(e) => onPatch({ description: e.target.value })}
+                    onChange={(e) => onPatch({ fields: { description: e.target.value } })}
                 />
             </label>
             {onDelete && (

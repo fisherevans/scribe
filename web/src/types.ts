@@ -1,43 +1,45 @@
-// scribe is collection-aware. Each resource carries its collection (`kind`),
-// a slug, and the two orthogonal axes from design.md: `state` is staging vs
-// promoted, `draft` (posts only) is listed vs unlisted. The editor renders a
-// per-collection "experience" (see collections.tsx).
-export type CollectionName = 'posts' | 'tags' | 'snippets'
+// A resource is generic: its collection, slug, an open frontmatter field map,
+// and a markdown body. The typed Post/Tag shapes are gone - the editor reads
+// and writes through `fields` so scribe works against any schema. `state` is the
+// staging axis; `notes` is private app-side metadata.
 export type ResourceState = 'staged' | 'promoted'
 
-interface Base {
-    kind: CollectionName
+export interface Resource {
+    collection: string
     slug: string
+    fields: Record<string, unknown>
+    body: string
     state: ResourceState
     dirty: boolean
+    notes: string
 }
 
-export interface Post extends Base {
-    kind: 'posts'
-    title: string
-    date: string // yyyy-mm-dd
-    description: string
-    tags: string[]
-    draft: boolean
-    hasVideo: boolean // preserved on round-trip (not yet surfaced for editing)
-    updatedDate: string
-    heroImage: string
-    body: string // markdown
-    notes: string // private, app-side only, never committed (not yet persisted)
-}
-
-export interface Tag extends Base {
-    kind: 'tags'
+// ---- schema (from /api/schema) -----------------------------------------
+export interface FieldDef {
     name: string
-    description: string
+    label: string
+    type: string // string, text, rich-text, date, boolean, image, number, select, object, code
+    required: boolean
+    list: boolean
+}
+export interface CollectionDef {
+    name: string
+    label: string
+    path: string
+    format: string
+    ext: string
+    fields: FieldDef[]
+}
+export interface Schema {
+    collections: CollectionDef[]
+    primary: string
 }
 
-// Snippets stand in for "some new resource type we add later." It has no
-// bespoke experience, so it exercises the generic auto-form fallback.
-export interface Snippet extends Base {
-    kind: 'snippets'
-    title: string
-    content: string
+// ---- field accessors ----------------------------------------------------
+export const fstr = (r: Resource, k: string): string => {
+    const v = r.fields[k]
+    return typeof v === 'string' ? v : v == null ? '' : String(v)
 }
-
-export type Resource = Post | Tag | Snippet
+export const fbool = (r: Resource, k: string): boolean => r.fields[k] === true
+export const flist = (r: Resource, k: string): string[] =>
+    Array.isArray(r.fields[k]) ? (r.fields[k] as string[]) : []

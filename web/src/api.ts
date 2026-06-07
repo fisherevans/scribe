@@ -1,42 +1,45 @@
-import type { CollectionName, Resource } from './types'
+import type { Resource, Schema } from './types'
 
-// Real client against the Go service (proxied at /api by Vite in dev). Same
-// shape as the former mock, so the app is agnostic to which is behind it.
+// Generic client over the schema-driven service. Everything is keyed by
+// collection name discovered from /api/schema.
 async function json(res: Response) {
-    if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
-    return res.json()
+    if (!res.ok && res.status !== 204) throw new Error(`${res.status}: ${await res.text()}`)
+    return res.status === 204 ? null : res.json()
 }
 
+const C = (c: string) => `/api/c/${encodeURIComponent(c)}`
+const R = (c: string, slug: string) => `${C(c)}/${encodeURIComponent(slug)}`
+
 export const api = {
-    list(c: CollectionName): Promise<Resource[]> {
-        return fetch(`/api/${c}`).then(json)
+    schema(): Promise<Schema> {
+        return fetch('/api/schema').then(json)
     },
-    // `data` is the full resource - the service rewrites the whole file, so a
-    // partial would drop untouched frontmatter.
-    save(c: CollectionName, slug: string, data: Resource): Promise<Resource> {
-        return fetch(`/api/${c}/${encodeURIComponent(slug)}`, {
+    list(c: string): Promise<Resource[]> {
+        return fetch(C(c)).then(json)
+    },
+    // Full resource: the service rewrites the whole file, so a partial would drop
+    // untouched frontmatter.
+    save(c: string, slug: string, data: Resource): Promise<Resource> {
+        return fetch(R(c, slug), {
             method: 'PUT',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(data),
         }).then(json)
     },
-    promote(c: CollectionName, slug: string): Promise<Resource> {
-        return fetch(`/api/${c}/${encodeURIComponent(slug)}/promote`, { method: 'POST' }).then(json)
+    create(c: string): Promise<Resource> {
+        return fetch(C(c), { method: 'POST' }).then(json)
     },
-    create(c: CollectionName): Promise<Resource> {
-        return fetch(`/api/${c}`, { method: 'POST' }).then(json)
+    remove(c: string, slug: string): Promise<void> {
+        return fetch(R(c, slug), { method: 'DELETE' }).then(() => undefined)
     },
-    remove(c: CollectionName, slug: string): Promise<void> {
-        return fetch(`/api/${c}/${encodeURIComponent(slug)}`, { method: 'DELETE' }).then((r) => {
-            if (!r.ok && r.status !== 204) throw new Error(`${r.status}`)
-        })
-    },
-    // Moves the file (or no-ops for an unsaved draft). Rejects on collision.
-    rename(c: CollectionName, slug: string, to: string): Promise<{ slug: string }> {
-        return fetch(`/api/${c}/${encodeURIComponent(slug)}/rename`, {
+    rename(c: string, slug: string, to: string): Promise<{ slug: string }> {
+        return fetch(`${R(c, slug)}/rename`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ to }),
         }).then(json)
+    },
+    promote(c: string, slug: string): Promise<Resource> {
+        return fetch(`${R(c, slug)}/promote`, { method: 'POST' }).then(json)
     },
 }
