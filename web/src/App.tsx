@@ -3,12 +3,13 @@ import { api } from './api'
 import type { Resource, Schema } from './types'
 import { fstr } from './types'
 import { viewFor, type CollectionView, type ResourcePatch } from './collections'
-import { resolve, type Mapping } from './mapping'
+import { resolve, isConfigured, type Mapping } from './mapping'
 import { CollectionRail } from './components/CollectionRail'
 import { Feed } from './components/Feed'
 import { TopBar, type SaveStatus } from './components/TopBar'
 import { PublishSheet } from './components/PublishSheet'
 import { SettingsPanel } from './components/SettingsPanel'
+import { SetupWizard } from './components/SetupWizard'
 import { TitleSlugModal } from './components/TitleSlugModal'
 import { applyTheme, DEFAULT_THEME, loadTheme, saveTheme, type Theme } from './theme'
 import { loadSettings, saveSettings, liveUrl, type AppSettings } from './settings'
@@ -42,6 +43,7 @@ export default function App() {
     const [drawer, setDrawer] = useState(false)
     const [details, setDetails] = useState(false)
     const [settingsOpen, setSettingsOpen] = useState(false)
+    const [setupOpen, setSetupOpen] = useState(false)
     const [editMode, setEditMode] = useState(false)
     const [modal, setModal] = useState<{ open: boolean; mode: 'new' | 'edit' }>({ open: false, mode: 'new' })
     const [theme, setTheme] = useState<Theme>(loadTheme)
@@ -67,6 +69,24 @@ export default function App() {
 
     useEffect(() => { applyTheme(theme); saveTheme(theme) }, [theme])
     useEffect(() => saveSettings(settings), [settings])
+
+    // First-run: if .scribe.yml doesn't cover the schema yet, offer setup (once).
+    useEffect(() => {
+        if (schema && mapping && !isConfigured(schema, mapping) && !localStorage.getItem('scribe-setup-seen')) {
+            setSetupOpen(true)
+        }
+    }, [schema, mapping])
+
+    const saveMappingConfig = useCallback(async (m: Mapping) => {
+        try {
+            const saved = await api.saveMapping(m)
+            setMapping(saved)
+        } catch (e) {
+            alert(`Couldn't save mapping: ${e instanceof Error ? e.message : e}`)
+        }
+        localStorage.setItem('scribe-setup-seen', '1')
+        setSetupOpen(false)
+    }, [])
     useEffect(() => { document.body.classList.toggle('is-readonly', !editMode) }, [editMode])
     useEffect(() => { document.documentElement.style.setProperty('--rail-w', railW.current + 'rem') }, [])
 
@@ -303,8 +323,19 @@ export default function App() {
                 onTheme={setTheme}
                 onThemeReset={() => setTheme({ ...DEFAULT_THEME })}
                 onSettings={setSettings}
+                onConfigure={() => { setSettingsOpen(false); setSetupOpen(true) }}
                 onClose={() => setSettingsOpen(false)}
             />
+            {schema && resolved && (
+                <SetupWizard
+                    open={setupOpen}
+                    firstRun={!mapping || !isConfigured(schema, mapping)}
+                    schema={schema}
+                    initial={resolved}
+                    onSave={saveMappingConfig}
+                    onClose={() => { localStorage.setItem('scribe-setup-seen', '1'); setSetupOpen(false) }}
+                />
+            )}
         </div>
     )
 }

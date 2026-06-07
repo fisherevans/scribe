@@ -45,15 +45,21 @@ function chooseExperience(def: CollectionDef): string {
     return 'generic'
 }
 
-// recommend an experience + field bindings for a collection.
-export function recommend(def: CollectionDef): CollectionMapping {
-    const exp = chooseExperience(def)
+// mapFieldsFor fills role->field bindings for a given experience by matching its
+// roles against the collection's fields. Used when (re)choosing an experience.
+export function mapFieldsFor(experience: string, def: CollectionDef): Record<string, string> {
     const fields: Record<string, string> = {}
-    for (const role of MODELS[exp].roles) {
+    for (const role of MODELS[experience]?.roles ?? []) {
         const f = matchField(def, role)
         if (f) fields[role.role] = f
     }
-    return { experience: exp, fields }
+    return fields
+}
+
+// recommend an experience + field bindings for a collection.
+export function recommend(def: CollectionDef): CollectionMapping {
+    const exp = chooseExperience(def)
+    return { experience: exp, fields: mapFieldsFor(exp, def) }
 }
 
 // resolve the active mapping for every collection: stored (.scribe.yml) wins,
