@@ -340,17 +340,17 @@ plugin loading stays a deferred stretch, not designed-out.</div>
 <div class="ms"><span class="mn">M6</span><span class="mt">Core SDK + packaging</span><span class="md">Extract the SDK; build-time plugin registration; ship core plugins on the SDK; authoring docs + example plugin.</span></div>
 <div class="ms"><span class="mn">M7</span><span class="mt">Distribution + deferred infra</span><span class="md">Plugin API versioning; then staging/promote, image-upload plugin, k3s deploy, auth modes.</span></div>
 
-<h2><span class="num">8</span>Open questions — your call</h2>
+<h2><span class="num">8</span>Resolved decisions <span style="font-family:var(--mono);font-size:.7rem;color:var(--sage);text-transform:uppercase;letter-spacing:.1em;vertical-align:.25em">✓ decided 2026-06</span></h2>
 <div class="qs">
-  <div class="q"><b>Q1 · Mapper direction.</b> Does <em>model ← yourField</em> read right (§5.2), or would you rather see your schema on the left and pick a role on the right?</div>
-  <div class="q"><b>Q2 · Setup trigger.</b> Wizard on first connect (§5.1), or a quieter "scribe configured itself with guesses; review anytime" that never blocks you?</div>
-  <div class="q"><b>Q3 · Raw bucket visibility.</b> Show the raw bucket during mapping (§5.2) and behind "more fields" while editing (§5.3) — too much, or reassuring?</div>
-  <div class="q"><b>Q4 · References.</b> Is per-field "this is a reference to collection X" config (§5.2) the right level, or should scribe infer it?</div>
-  <div class="q"><b>Q5 · Plugins.</b> Build-time-only for v1 (§6) acceptable, or is drop-in runtime loading a hard requirement sooner?</div>
-  <div class="q"><b>Q6 · Cascades.</b> Should cascade-on-rename be default-on with a preview (§5.4), or always an explicit opt-in?</div>
+  <div class="q"><b>Q1 · Mapper direction →</b> keep <em>model ← yourField</em> (editor's needs on the left). <span style="color:var(--sage)">✓</span></div>
+  <div class="q"><b>Q2 · Setup →</b> a <strong>wizard that recommends, never auto-configures.</strong> Basic field-shape rules pre-fill guesses; every binding is an explicit confirm. No silent config. <span style="color:var(--sage)">✓</span></div>
+  <div class="q"><b>Q3 · Raw fields →</b> <strong>present but hidden by default,</strong> behind an "advanced / show additional fields" reveal — in both the mapper and the editor. You can see everything that exists, just not by default. <span style="color:var(--sage)">✓</span></div>
+  <div class="q"><b>Q4 · References →</b> <strong>per-field and explicit, never inferred.</strong> You declare a field as a reference in <code>.scribe.yml</code>. <span style="color:var(--sage)">✓</span></div>
+  <div class="q"><b>Q5 · Plugins →</b> <strong>folder-based, loaded at startup/build.</strong> Drop plugin folders into a <code>plugins/</code> dir; discovered on build/start. No hot reload, no in-UI install. Forking = copy a folder. <span style="color:var(--sage)">✓</span></div>
+  <div class="q"><b>Q6 · Cascades →</b> <strong>on by default, with an impact preview</strong> ("this will update 26 resources") and an opt-out before applying. <span style="color:var(--sage)">✓</span></div>
 </div>
 
-<div class="fbk">Comment by section number (e.g. "§5.2: flip the mapper direction; §8 Q5: runtime needed for hosted multi-tenant"). I'll fold your notes into <code>docs/extensibility.md</code> and the GitHub issues before we build.</div>
+<div class="fbk">These are folded into <code>docs/extensibility.md</code> (authoritative) and the M2 issue on GitHub. The mockups above are illustrative; §5.2's raw bucket and the cascade default reflect these decisions in the prose even where the drawing shows the expanded state.</div>
 
 </div>
 </body>

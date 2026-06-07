@@ -111,8 +111,8 @@ Three buckets of fields, which is the heart of "accommodate whatever they did":
 - **Mapped optional** - bound if present, otherwise the editor hides them.
 - **Unmapped** - everything else in the collection. Rendered by the raw editor
   (structured field widgets where the type is known, a YAML/JSON escape hatch
-  otherwise), with a "show me what the editor doesn't cover" filter so you can
-  see and edit the leftover metadata without hunting.
+  otherwise). **Hidden by default** behind an "advanced / show additional fields"
+  reveal in both the mapper and the editor - always available, never in the way.
 
 ### 5. Field widgets
 A widget per Pages CMS field type (string, text, date, boolean, image, select,
@@ -141,20 +141,21 @@ A core package exports the reusable pieces: the document/markdown editor,
 the data hooks, and the experience contract types. Plugins import from it; a
 common editor (e.g. tags) is one shared export reused across plugins.
 
-**Distribution decision (needs a call):** v1 plugins are **build-time** - a
-deployment configures which plugins it uses (core, npm packages, or a local
-`plugins/` dir) and builds. "Fork a plugin" = fork the package, point your build
-at it. This is simpler and safe (no arbitrary runtime JS) and fits both "public
-plugin package" and "local deployment." **Runtime/dynamic plugin loading** (drop
-in a plugin without rebuilding) is a harder stretch goal (bundling, API
-stability, trust) - deferred, not designed-out.
+**Distribution (decided):** plugins are **folder-based, loaded at startup/build.**
+A `plugins/` directory is discovered (glob-imported) when the app builds/starts;
+each folder is a plugin. Adding one is a filesystem + rebuild action, not an
+in-UI install, and there is no hot reload. "Fork a plugin" = copy a folder and
+change it; a public plugin is just a folder you can drop in (published as a
+package or copied in). No arbitrary runtime JS, no plugin-manager UI. Runtime
+hot-loading is explicitly out of scope.
 
 ## Cascades & cross-resource editing
 
 `reference` fields + `referencers()` enable the marquee behaviors:
 
 - Edit a tag inline from a post (the picker opens the tag experience).
-- Rename a tag -> "update the N posts that reference it?" with a preview.
+- Rename a tag -> cascades to referencing posts **by default**, with an impact
+  preview ("this will update 26 posts") and an opt-out before applying.
 - Delete a referenced resource -> warn about / clean up referencers.
 
 These live in the core tag experience as the reference implementation, built only
@@ -198,14 +199,33 @@ Authoring docs + an example third-party plugin.
 Plugin API versioning/stability policy. Then the deferred infra: staging/promote
 git layer, the image-upload plugin, k3s deploy, auth modes.
 
-## Open decisions
+## Resolved decisions (2026-06)
 
-- **Build-time vs runtime plugins** (recommend build-time for v1).
-- **`.scribe.yml` location** - in-repo (recommended; travels with the site) vs
-  service-side.
-- **How generic to make M1** - full Pages CMS type coverage now, or the subset
-  the blog uses first and widen later (recommend: model all types, implement
-  widgets lazily).
-- **Reference fields in Pages CMS** - Pages CMS may not have a native `reference`
-  type; tags are a `string`+`list`. Decide how scribe recognizes a field as a
-  reference (convention in `.scribe.yml`: `tags -> reference(tags)`).
+Locked from the vision-report review:
+
+- **Mapper direction:** `model ← yourField` (the editor's needs on the left).
+- **Setup:** a **wizard that recommends, never auto-configures.** It guesses an
+  experience per collection from basic rules (field-shape heuristics) and
+  pre-fills mappings, but every binding is an explicit confirmation. scribe never
+  silently writes a config you didn't approve.
+- **Raw/additional fields:** **present but hidden by default.** Both in the mapper
+  and the editor, the unmapped/extra fields live behind an "advanced / show
+  additional fields" reveal - you can always see everything that exists, but it's
+  not in your face by default.
+- **References:** **per-field and explicit, never inferred.** scribe does not
+  guess that a field points at another collection; you declare it in `.scribe.yml`
+  (`tags -> reference(tags)`). Pages CMS has no native reference type, so this
+  declaration is where references come from.
+- **Plugins:** **folder-based, loaded at startup/build, no hot reload, no in-UI
+  install.** Drop plugin folders/files into a `plugins/` directory; they're
+  discovered when the app builds/starts. Adding a plugin is a filesystem +
+  rebuild action, not a UI flow. Forking = copy a folder and change it.
+- **Cascades:** **on by default, with an impact preview.** Renaming a referenced
+  resource cascades to its referencers by default, but always shows a preview
+  ("this will update 26 resources") with an opt-out before applying.
+
+Still open / decide when reached:
+
+- **`.scribe.yml` location** - in-repo (recommended; travels with the site).
+- **How generic to make M1** - recommend: model all Pages CMS types, implement
+  widgets lazily as needed.
