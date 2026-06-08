@@ -3,6 +3,7 @@ import type { ExperienceProps } from '../collections'
 import { fstr } from '../types'
 import { slugify } from '../slug'
 import { ContentEditor } from '../editor/ContentEditor'
+import { Editor } from '../editor/Editor'
 
 // Tags: name + description edit live (they touch no references). The slug is a
 // reference target, so renaming it goes through an explicit edit -> apply step
@@ -15,7 +16,29 @@ export function TagExperience({ resource, def, map, onPatch, onRename, onDelete 
 
     const [editingSlug, setEditingSlug] = useState(false)
     const [slugDraft, setSlugDraft] = useState(resource.slug)
-    useEffect(() => { setSlugDraft(resource.slug); setEditingSlug(false) }, [resource.slug])
+    const [fullscreen, setFullscreen] = useState(false)
+    useEffect(() => { setSlugDraft(resource.slug); setEditingSlug(false); setFullscreen(false) }, [resource.slug])
+
+    const name = fstr(resource, nameField) || resource.slug
+
+    // Full-screen page-content editing: the same document surface as a post.
+    if (fullscreen && hasBody) {
+        return (
+            <div className="tagfull">
+                <div className="tagfull__bar">
+                    <button className="btn btn--ghost" type="button" onClick={() => setFullscreen(false)}>← back to tag</button>
+                    <span className="tagfull__title">editing <strong>{name}</strong> page content</span>
+                </div>
+                <Editor
+                    slug={'tag:' + resource.slug}
+                    title={name}
+                    body={resource.body}
+                    editable
+                    onBody={(md) => onPatch({ body: md })}
+                />
+            </div>
+        )
+    }
 
     const applySlug = () => {
         const to = slugify(slugDraft)
@@ -77,7 +100,10 @@ export function TagExperience({ resource, def, map, onPatch, onRename, onDelete 
 
             {hasBody && (
                 <div className="ffield">
-                    <span className="ffield__label">page content <span className="ffield__hint">optional · markdown shown on the tag page</span></span>
+                    <div className="ffield__labelrow">
+                        <span className="ffield__label">page content <span className="ffield__hint">optional · markdown shown on the tag page</span></span>
+                        <button className="ffield__expand" type="button" onClick={() => setFullscreen(true)} title="open the full editor">⤢ full screen</button>
+                    </div>
                     <ContentEditor
                         docKey={'tag:' + resource.slug}
                         body={resource.body}

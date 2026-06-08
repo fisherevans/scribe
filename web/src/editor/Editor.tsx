@@ -6,19 +6,20 @@ interface Props {
     title: string
     body: string // markdown
     editable: boolean
-    onEditTitle: () => void
+    onEditTitle?: () => void // when omitted, no title-edit affordance is shown
     onBody: (markdown: string) => void
+    emptyTitle?: string
 }
 
 // The post writing surface: page chrome (title header, word-count footer) around
-// the shared ContentEditor.
-export function Editor({ slug, title, body, editable, onEditTitle, onBody }: Props) {
+// the shared ContentEditor. Reused for the tag full-screen page-content editor.
+export function Editor({ slug, title, body, editable, onEditTitle, onBody, emptyTitle = 'Untitled' }: Props) {
     const [words, setWords] = useState(0)
     return (
         <article className="page">
             <header className="page__head">
-                <h1 className={'page__title-display' + (title ? '' : ' is-empty')}>{title || 'Untitled'}</h1>
-                {editable && (
+                <h1 className={'page__title-display' + (title ? '' : ' is-empty')}>{title || emptyTitle}</h1>
+                {editable && onEditTitle && (
                     <button className="page__edit" type="button" onClick={onEditTitle} title="edit title & slug">
                         ✎ title
                     </button>
