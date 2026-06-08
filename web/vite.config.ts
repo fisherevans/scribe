@@ -1,9 +1,11 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Dev server proxies /api to the Go service once it exists; today the app runs
-// on the mock layer in src/mock.ts and the proxy is just a no-op target.
-export default defineConfig({
+// In production the Go binary serves this build under /_app/ (so the UI's own
+// JS/CSS never collide with the blog's site-root content assets like /posts/...
+// or /assets/uploads/...). Dev keeps base '/' and proxies to the Go service.
+export default defineConfig(({ command }) => ({
+    base: command === 'build' ? '/_app/' : '/',
     plugins: [react()],
     server: {
         port: 4330,
@@ -16,4 +18,4 @@ export default defineConfig({
             '/assets': 'http://localhost:8080',
         },
     },
-})
+}))

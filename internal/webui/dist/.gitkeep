@@ -1,0 +1,2 @@
+Placeholder so `//go:embed all:dist` compiles on a bare checkout.
+In Docker, `npm run build` overwrites this dir with the real UI before `go build`.

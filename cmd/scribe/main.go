@@ -14,12 +14,15 @@ import (
 	"path/filepath"
 	"time"
 
+	"io/fs"
+
 	"github.com/fisherevans/scribe/internal/api"
 	"github.com/fisherevans/scribe/internal/content"
 	"github.com/fisherevans/scribe/internal/git"
 	"github.com/fisherevans/scribe/internal/mapping"
 	"github.com/fisherevans/scribe/internal/schema"
 	"github.com/fisherevans/scribe/internal/store"
+	"github.com/fisherevans/scribe/internal/webui"
 )
 
 func main() {
@@ -30,6 +33,7 @@ func main() {
 	stagingBranch := flag.String("staging-branch", envOr("SCRIBE_STAGING_BRANCH", "staging"), "branch edits are committed to")
 	mainBranch := flag.String("main-branch", os.Getenv("SCRIBE_MAIN_BRANCH"), "branch promote publishes to (default: current branch)")
 	push := flag.Bool("push", envBool("SCRIBE_PUSH"), "push staging/main to origin on commit/promote")
+	webDir := flag.String("web-dir", os.Getenv("SCRIBE_WEB_DIR"), "serve the built UI from this dir (overrides the embedded build)")
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -73,9 +77,22 @@ func main() {
 		}
 	}
 
+	// Editor UI: a --web-dir on disk wins, else the build embedded at compile
+	// time. nil means API-only (dev serves the UI from Vite instead).
+	var ui fs.FS
+	if *webDir != "" {
+		ui = os.DirFS(*webDir)
+		log.Info("serving UI from dir", "dir", *webDir)
+	} else if embedded, ok := webui.FS(); ok {
+		ui = embedded
+		log.Info("serving embedded UI")
+	} else {
+		log.Info("no UI bundled, running API-only (use the Vite dev server for the UI)")
+	}
+
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           api.New(cstore, notes, mstore, grepo, publicDir).Routes(),
+		Handler:           api.New(cstore, notes, mstore, grepo, publicDir, ui).Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
