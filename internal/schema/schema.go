@@ -33,11 +33,12 @@ type Collection struct {
 
 // Field is one field on a collection.
 type Field struct {
-	Name     string `json:"name"`
-	Label    string `json:"label"`
-	Type     string `json:"type"` // string, text, rich-text, date, boolean, image, number, select, object, code
-	Required bool   `json:"required"`
-	List     bool   `json:"list"`
+	Name     string   `json:"name"`
+	Label    string   `json:"label"`
+	Type     string   `json:"type"` // string, text, rich-text, date, boolean, image, number, select, object, code
+	Required bool     `json:"required"`
+	List     bool     `json:"list"`
+	Options  []string `json:"options,omitempty"` // for select fields
 }
 
 func (s *Schema) Collection(name string) (*Collection, bool) {
@@ -84,6 +85,29 @@ type rawField struct {
 	Type     string `yaml:"type"`
 	Required bool   `yaml:"required"`
 	List     bool   `yaml:"list"`
+	Options  *struct {
+		Values []any `yaml:"values"`
+	} `yaml:"options"`
+}
+
+// optionValues extracts select option values, handling both ["a","b"] and
+// [{value: a, label: A}] shapes.
+func optionValues(f rawField) []string {
+	if f.Options == nil {
+		return nil
+	}
+	var out []string
+	for _, v := range f.Options.Values {
+		switch t := v.(type) {
+		case string:
+			out = append(out, t)
+		case map[string]any:
+			if s, ok := t["value"].(string); ok {
+				out = append(out, s)
+			}
+		}
+	}
+	return out
 }
 
 // Load reads and parses <repo>/.pages.yml.
@@ -119,6 +143,7 @@ func Parse(b []byte) (*Schema, error) {
 				Type:     orElse(f.Type, "string"),
 				Required: f.Required,
 				List:     f.List,
+				Options:  optionValues(f),
 			})
 		}
 		s.Collections = append(s.Collections, c)

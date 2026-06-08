@@ -691,6 +691,13 @@ body.is-readonly .drag-handle { display: none !important; }
 }
 .ffield__input:focus { border-color: var(--brass); }
 .ffield__input--lg { font-family: var(--serif-display); font-size: 1.5rem; font-weight: 520; }
+/* FieldWidget inside a parchment formcard: make .field__input read on paper. */
+.formcard .field__input { background: var(--paper); border: 1px solid var(--paper-line); border-radius: 0.45rem; padding: 0.6rem 0.7rem; font-family: var(--serif-body); font-size: 1.02rem; color: var(--ink); outline: none; width: 100%; }
+.formcard .field__input:focus { border-color: var(--brass); }
+.formcard .field__input--mono { font-family: var(--mono); font-size: 0.85rem; }
+.formcard .toggle__track { background: var(--paper-2); border-color: var(--paper-line); }
+.formcard .toggle input:checked + .toggle__track { background: var(--brass-soft); border-color: var(--brass-deep); }
+.formcard .field__heropreview { border-color: var(--paper-line); }
 
 /* ---- Slash menu --------------------------------------------------------- */
 .slash__anchor { position: fixed; z-index: 60; }
