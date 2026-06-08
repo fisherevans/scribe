@@ -1,0 +1,10 @@
+# Mirrors the nottingham-cloud per-project convention. The Secret (scribe-secrets)
+# is intentionally NOT listed here - it's materialized out-of-band from Bitwarden
+# by a `make configure-scribe` target, same as rsvp.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - pvc.yaml
+  - service.yaml
+  - deployment.yaml
