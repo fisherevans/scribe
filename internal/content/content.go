@@ -63,6 +63,25 @@ func (s *Store) RelPath(collection, slug string) (string, error) {
 	return filepath.Join(c.Path, slug+c.Ext), nil
 }
 
+// ResolvePath maps a repo-relative path back to its (collection, slug), the
+// inverse of RelPath. Returns ok=false for paths outside any collection dir
+// (assets, config, etc.). Used to translate a git changeset into resources.
+func (s *Store) ResolvePath(rel string) (collection, slug string, ok bool) {
+	rel = filepath.ToSlash(rel)
+	for _, c := range s.schema.Collections {
+		dir := filepath.ToSlash(c.Path) + "/"
+		if !strings.HasPrefix(rel, dir) || !strings.HasSuffix(rel, c.Ext) {
+			continue
+		}
+		name := strings.TrimSuffix(strings.TrimPrefix(rel, dir), c.Ext)
+		if name == "" || strings.Contains(name, "/") {
+			continue // nested dirs aren't slugs in this model
+		}
+		return c.Name, name, true
+	}
+	return "", "", false
+}
+
 // ---- read ---------------------------------------------------------------
 
 func (s *Store) List(name string) ([]Resource, error) {

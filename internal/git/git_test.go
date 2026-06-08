@@ -124,62 +124,91 @@ func TestCommitNoOpWhenUnchanged(t *testing.T) {
 	}
 }
 
-func TestStagedPathsAndPromote(t *testing.T) {
+func TestDiffReportsChangeset(t *testing.T) {
 	dir := initRepo(t)
 	r, err := Open(dir, "staging", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
+	write(t, dir, "posts/a.md", "modified\n")    // modify existing
+	write(t, dir, "posts/new.md", "brand new\n") // add
+	if err := r.Commit("posts/a", []string{"posts/a.md"}, "edit a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Commit("posts/new", []string{"posts/new.md"}, "add new"); err != nil {
+		t.Fatal(err)
+	}
+	changes, err := r.Diff()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, c := range changes {
+		got[c.Path] = c.Status
+	}
+	if got["posts/a.md"] != "modified" || got["posts/new.md"] != "added" {
+		t.Fatalf("unexpected changeset: %v", got)
+	}
+}
+
+func TestPublishIsAtomicAndConverges(t *testing.T) {
+	dir := initRepo(t)
+	r, err := Open(dir, "staging", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A cascade-like batch: modify one, add one, delete one - across saves.
 	write(t, dir, "posts/a.md", "edited on staging\n")
-	if err := r.Commit("posts/a", []string{"posts/a.md"}, "edit posts/a"); err != nil {
+	write(t, dir, "posts/b.md", "new post\n")
+	if err := r.Commit("posts/a", []string{"posts/a.md"}, "edit a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Commit("posts/b", []string{"posts/b.md"}, "add b"); err != nil {
 		t.Fatal(err)
 	}
 
+	n, err := r.Publish("publish: 2 changes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("expected 2 changes published, got %d", n)
+	}
+	// main carries every change, as one squash commit.
+	if got := gitOut(t, dir, "show", "main:posts/a.md"); strings.TrimSpace(got) != "edited on staging" {
+		t.Fatalf("main missing modified file, got %q", got)
+	}
+	if err := exec.Command("git", "-C", dir, "cat-file", "-e", "main:posts/b.md").Run(); err != nil {
+		t.Fatal("main missing added file after publish")
+	}
+	// staging and main converge; nothing left staged.
 	staged, err := r.StagedPaths()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !staged["posts/a.md"] {
-		t.Fatalf("expected posts/a.md to be staged, got %v", staged)
-	}
-
-	if err := r.Promote([]string{"posts/a.md"}, "promote posts/a"); err != nil {
-		t.Fatal(err)
-	}
-	// After promote, main has the staging content and nothing is staged.
-	if got := gitOut(t, dir, "show", "main:posts/a.md"); strings.TrimSpace(got) != "edited on staging" {
-		t.Fatalf("main not updated by promote, got %q", got)
-	}
-	staged, err = r.StagedPaths()
-	if err != nil {
-		t.Fatal(err)
-	}
 	if len(staged) != 0 {
-		t.Fatalf("expected nothing staged after promote, got %v", staged)
+		t.Fatalf("expected clean after publish, got %v", staged)
 	}
-	// scribe is back on staging.
 	if cur := gitOut(t, dir, "rev-parse", "--abbrev-ref", "HEAD"); cur != "staging" {
 		t.Fatalf("expected to be back on staging, got %q", cur)
 	}
+	if gitOut(t, dir, "rev-parse", "staging") != gitOut(t, dir, "rev-parse", "main") {
+		t.Fatal("expected staging to converge to main after publish")
+	}
 }
 
-func TestPromoteDelete(t *testing.T) {
+func TestPublishNoOpWhenClean(t *testing.T) {
 	dir := initRepo(t)
 	r, err := Open(dir, "staging", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(filepath.Join(dir, "posts/a.md")); err != nil {
+	n, err := r.Publish("nothing")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Commit("posts/a", []string{"posts/a.md"}, "delete posts/a"); err != nil {
-		t.Fatal(err)
-	}
-	if err := r.Promote([]string{"posts/a.md"}, "promote delete posts/a"); err != nil {
-		t.Fatal(err)
-	}
-	if err := exec.Command("git", "-C", dir, "cat-file", "-e", "main:posts/a.md").Run(); err == nil {
-		t.Fatal("expected posts/a.md removed from main after promoting the delete")
+	if n != 0 {
+		t.Fatalf("expected 0 changes on a clean tree, got %d", n)
 	}
 }
 

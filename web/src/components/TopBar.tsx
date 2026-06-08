@@ -9,12 +9,13 @@ interface Props {
     showEdit: boolean
     editMode: boolean
     status: SaveStatus
-    promoting: boolean
+    stagedCount: number
+    publishing: boolean
     liveUrl: string | null
     onMenu: () => void
     onToggleEdit: () => void
     onDetails: () => void
-    onPromote: () => void
+    onPublish: () => void
 }
 
 const STATUS_LABEL: Record<SaveStatus, string> = {
@@ -24,8 +25,7 @@ const STATUS_LABEL: Record<SaveStatus, string> = {
     edited: 'unsaved',
 }
 
-export function TopBar({ resource, showDetails, showEdit, editMode, status, promoting, liveUrl, onMenu, onToggleEdit, onDetails, onPromote }: Props) {
-    const canPromote = resource && (resource.state === 'staged' || resource.dirty || status === 'edited')
+export function TopBar({ resource, showDetails, showEdit, editMode, status, stagedCount, publishing, liveUrl, onMenu, onToggleEdit, onDetails, onPublish }: Props) {
     const [menuOpen, setMenuOpen] = useState(false)
     // Secondary-action handlers also close the overflow menu (mobile).
     const close = (fn: () => void) => () => {
@@ -77,8 +77,8 @@ export function TopBar({ resource, showDetails, showEdit, editMode, status, prom
                                 view live ↗
                             </a>
                         )}
-                        <button className="btn btn--promote" onClick={close(onPromote)} type="button" disabled={!canPromote || promoting}>
-                            {promoting ? 'promoting…' : resource?.state === 'promoted' && !canPromote ? 'live' : 'promote'}
+                        <button className="btn btn--promote" onClick={close(onPublish)} type="button" disabled={stagedCount === 0 || publishing}>
+                            {publishing ? 'publishing…' : stagedCount > 0 ? `↑ publish ${stagedCount}` : 'published'}
                         </button>
                     </div>
                 </div>

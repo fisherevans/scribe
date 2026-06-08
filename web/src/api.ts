@@ -50,7 +50,27 @@ export const api = {
             body: JSON.stringify({ to }),
         }).then(json)
     },
-    promote(c: string, slug: string): Promise<Resource> {
-        return fetch(`${R(c, slug)}/promote`, { method: 'POST' }).then(json)
+    // The staged-vs-main changeset: exactly what publish will land, atomically.
+    publishDiff(): Promise<PublishDiff> {
+        return fetch('/api/publish').then(json)
     },
+    publish(): Promise<PublishResult> {
+        return fetch('/api/publish', { method: 'POST' }).then(json)
+    },
+}
+
+export interface PublishChange {
+    collection: string
+    slug: string
+    title: string
+    status: 'added' | 'modified' | 'deleted' | 'renamed'
+    from?: string
+}
+export interface PublishDiff {
+    changes: PublishChange[]
+    enabled: boolean
+}
+export interface PublishResult {
+    published: number
+    enabled: boolean
 }

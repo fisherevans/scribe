@@ -43,7 +43,8 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.HandleFunc("PUT /api/c/{collection}/{slug}", s.save)
 	mux.HandleFunc("DELETE /api/c/{collection}/{slug}", s.del)
 	mux.HandleFunc("POST /api/c/{collection}/{slug}/rename", s.rename)
-	mux.HandleFunc("POST /api/c/{collection}/{slug}/promote", s.promote)
+	mux.HandleFunc("GET /api/publish", s.publishDiff)
+	mux.HandleFunc("POST /api/publish", s.publish)
 	mux.HandleFunc("GET /api/c/{collection}/{slug}/serialized", s.serialized)
 	return mux
 }
@@ -241,30 +242,99 @@ func (s *Server) rename(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"slug": to})
 }
 
-func (s *Server) promote(w http.ResponseWriter, r *http.Request) {
-	// Promote brings this resource's staged version onto the main branch. With
-	// git disabled a save already lands in the working tree, so promote is a
-	// no-op echo.
-	c, slug := r.PathValue("collection"), r.PathValue("slug")
-	if s.git != nil {
-		rel, err := s.store.RelPath(c, slug)
-		if err != nil {
-			fail(w, err)
-			return
-		}
-		if err := s.git.Promote([]string{rel}, "promote "+c+"/"+slug); err != nil {
-			fail(w, err)
-			return
-		}
+// change is one entry in the publish changeset the UI reviews before publishing.
+type change struct {
+	Collection string `json:"collection"`
+	Slug       string `json:"slug"`
+	Title      string `json:"title"`
+	Status     string `json:"status"`         // added | modified | deleted | renamed
+	From       string `json:"from,omitempty"` // prior slug, for renames
+}
+
+// publishDiff returns the full staged-vs-main changeset. This is exactly what
+// publish will land on main, atomically. Empty when nothing is staged or git
+// is disabled.
+func (s *Server) publishDiff(w http.ResponseWriter, _ *http.Request) {
+	if s.git == nil {
+		writeJSON(w, map[string]any{"changes": []change{}, "enabled": false})
+		return
 	}
-	saved, err := s.store.Read(c, slug)
+	raw, err := s.git.Diff()
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	res := s.wrap(c, *saved)
-	s.applyState(c, &res, s.stagedSet())
-	writeJSON(w, res)
+	out := make([]change, 0, len(raw))
+	for _, ch := range raw {
+		col, slug, ok := s.store.ResolvePath(ch.Path)
+		if !ok {
+			continue // not a content file (asset, config, etc.)
+		}
+		c := change{Collection: col, Slug: slug, Status: ch.Status, Title: s.titleOf(col, slug)}
+		if ch.OldPath != "" {
+			if _, from, ok := s.store.ResolvePath(ch.OldPath); ok {
+				c.From = from
+			}
+		}
+		out = append(out, c)
+	}
+	writeJSON(w, map[string]any{"changes": out, "enabled": true})
+}
+
+// publish lands the entire staging changeset onto main as one squash commit and
+// (when push is enabled) pushes it. All-or-nothing - referential edits never
+// land half-applied.
+func (s *Server) publish(w http.ResponseWriter, _ *http.Request) {
+	if s.git == nil {
+		writeJSON(w, map[string]any{"published": 0, "enabled": false})
+		return
+	}
+	raw, err := s.git.Diff()
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	n, err := s.git.Publish(publishSummary(raw))
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"published": n, "enabled": true})
+}
+
+// titleOf is a best-effort human label for a resource (title/name field, else
+// slug). Deleted resources are gone from the working tree, so they fall back to
+// the slug.
+func (s *Server) titleOf(collection, slug string) string {
+	r, err := s.store.Read(collection, slug)
+	if err != nil {
+		return slug
+	}
+	for _, k := range []string{"title", "name"} {
+		if v, ok := r.Fields[k].(string); ok && v != "" {
+			return v
+		}
+	}
+	return slug
+}
+
+// publishSummary builds a one-line commit message summarizing the changeset,
+// e.g. "publish: 3 modified, 1 added, 1 deleted".
+func publishSummary(changes []git.Change) string {
+	counts := map[string]int{}
+	for _, c := range changes {
+		counts[c.Status]++
+	}
+	var parts []string
+	for _, k := range []string{"added", "modified", "renamed", "deleted"} {
+		if counts[k] > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", counts[k], k))
+		}
+	}
+	if len(parts) == 0 {
+		return "publish"
+	}
+	return "publish: " + strings.Join(parts, ", ")
 }
 
 func (s *Server) serialized(w http.ResponseWriter, r *http.Request) {

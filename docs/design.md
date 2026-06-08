@@ -97,25 +97,31 @@ between `staging` and `main`:
   into one commit, so a writing session is one commit per resource rather than
   one-per-debounced-save. This is also the durability mechanism (see backup
   below).
-- **Promote -> production.** Promotion is *per-resource*: scribe brings that one
-  file's `staging` version onto `main` and commits it there (it does not merge
-  the whole `staging` branch). This matches the per-resource promote control in
-  the UI - stage many drafts, publish them individually. Pushing `main` triggers
-  the downstream render/publish pipeline. Deletes promote too (the file is
-  removed from `main`).
+- **Publish -> production, atomic.** Publishing is *whole-staging*: scribe
+  squash-merges the entire `staging` diff onto `main` as one commit, pushes
+  `main`, then resets `staging` to `main` so the two converge. It is
+  all-or-nothing by design - a cascading edit (a tag rename that touched
+  several posts) lands together or not at all, so `main` is never left
+  referentially broken. The downstream render/publish pipeline takes `main`
+  from there. Deletes and renames publish as part of the batch.
+
+Per-resource promotion was explicitly rejected: with M5's reference cascades,
+publishing one resource of a referential batch (rename a tag, update its posts)
+would leave `main` inconsistent. Publish is therefore a reviewed batch, not a
+per-item action.
 
 > Implemented in `internal/git` (shelling out to the `git` CLI), wired through
-> `internal/api`. scribe sits on `staging` at all times; promote briefly checks
-> out `main` and returns. Pushing to `origin` is gated behind `--push`
-> (default off) so local dev doesn't touch the remote. Rendering and publishing
-> are a separate downstream pipeline - scribe's responsibility ends at the
-> commit.
+> `internal/api`. `GET /api/publish` returns the changeset (added / modified /
+> deleted / renamed, resolved to collection+slug); `POST /api/publish` performs
+> the squash-merge. The web reviews the diff, confirms, and shows commit/push
+> progress. scribe sits on `staging` at all times; publish briefly checks out
+> `main` and returns. Pushing to `origin` is gated behind `--push` (default
+> off) so local dev doesn't touch the remote. Rendering and publishing are a
+> separate downstream pipeline - scribe's responsibility ends at the commit.
 
-The earlier whole-branch-merge model (squash-merge `staging`->`main`, then
-fast-forward `staging`) was dropped in favor of per-resource promotion. If
-`main` is edited independently (GitHub / Pages CMS), per-resource promote
-overwrites that file on `main` with the staging version rather than reconciling
-- acceptable while scribe is effectively the single writer.
+If `main` is edited independently (GitHub / Pages CMS), the squash-merge
+reconciles where it can and surfaces a conflict otherwise; with a single writer
+this is rare.
 
 `origin` push of `staging` is always a fast-forward (scribe is the sole writer
 of that branch). Only the `staging -> main` merge can conflict, and only when
