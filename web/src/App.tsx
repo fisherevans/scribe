@@ -455,7 +455,7 @@ export default function App() {
                 />
                 <div className={'app__canvas' + (collection === 'posts' ? '' : ' app__canvas--form')}>
                     {active && view && Experience ? (
-                        <Experience resource={active} def={view.def} map={view.map} onPatch={patch} onEditTitle={() => setModal({ open: true, mode: 'edit' })} onRename={rename} onDelete={deleteActive} editable={editMode} />
+                        <Experience resource={active} def={view.def} map={view.map} references={view.references} onPatch={patch} onEditTitle={() => setModal({ open: true, mode: 'edit' })} onRename={rename} onDelete={deleteActive} onOpenRef={openResource} editable={editMode} />
                     ) : (
                         <div className="empty">{view ? `Nothing here yet. Press “${view.newLabel}”.` : 'Loading…'}</div>
                     )}

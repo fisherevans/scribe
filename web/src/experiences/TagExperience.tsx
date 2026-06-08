@@ -35,6 +35,17 @@ export function TagExperience({ resource, def, map, onPatch, onRename, onDelete 
                     body={resource.body}
                     editable
                     onBody={(md) => onPatch({ body: md })}
+                    meta={
+                        <div className="docmeta docmeta--edit">
+                            <textarea
+                                className="docmeta__desc"
+                                rows={2}
+                                value={fstr(resource, descField)}
+                                placeholder="Description — one-liner for listings"
+                                onChange={(e) => onPatch({ fields: { [descField]: e.target.value } })}
+                            />
+                        </div>
+                    }
                 />
             </div>
         )

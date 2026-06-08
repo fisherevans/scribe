@@ -333,6 +333,27 @@ button { font-family: inherit; cursor: pointer; }
 }
 .page__edit:hover { color: var(--ink); border-color: var(--brass-deep); }
 
+/* Inline document metadata (date / description / tags) between title and body. */
+.docmeta { margin: 0 0 1.6rem; }
+.docmeta--view .docmeta__byline { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.06em; color: var(--ink-faintest); margin-bottom: 0.5rem; }
+.docmeta--view .docmeta__lede { font-family: var(--serif-body); font-style: italic; font-size: 1.18rem; line-height: 1.5; color: var(--ink-soft); margin: 0; }
+.docmeta--edit { display: flex; flex-direction: column; gap: 0.7rem; padding: 0.2rem 0 1.1rem; border-bottom: 1px solid var(--paper-line); }
+.docmeta__field { display: flex; align-items: center; gap: 0.6rem; }
+.docmeta__lbl { font-family: var(--mono); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-soft); }
+.docmeta__date { font-family: var(--mono); font-size: 0.82rem; color: var(--ink); background: var(--paper-2); border: 1px solid var(--paper-line); border-radius: 0.4rem; padding: 0.3rem 0.5rem; color-scheme: light; outline: none; }
+.docmeta__date:focus { border-color: var(--brass); }
+.docmeta__desc { width: 100%; font-family: var(--serif-body); font-style: italic; font-size: 1.12rem; line-height: 1.45; color: var(--ink); background: transparent; border: none; border-left: 2px solid var(--paper-line); padding: 0.05rem 0 0.05rem 0.8rem; outline: none; resize: vertical; }
+.docmeta__desc:focus { border-left-color: var(--brass); }
+.docmeta__desc::placeholder { color: var(--ink-faintest); }
+/* ReferencePicker reads on parchment here, not the dark desk. */
+.docmeta__tags .chips { background: var(--paper-2); border-color: var(--paper-line); }
+.docmeta__tags .chips__input { color: var(--ink); }
+.docmeta__tags .chip { background: var(--brass-soft); color: var(--ink); }
+.docmeta__tags .chip__label { color: var(--ink); }
+.docmeta__tags .suggest { background: var(--paper-2); border-color: var(--paper-line); }
+.docmeta__tags .suggest__item { background: var(--paper); color: var(--ink-mute); border-color: var(--paper-line); }
+.docmeta__tags .suggest__item:hover { color: var(--ink); border-color: var(--brass-deep); }
+
 /* The drag handle is a child of .page__body, positioned in the left gutter, and
    the extension hides it on mouseout of .page__body. padding-left + equal
    negative margin-left extend that element's box left into the gutter WITHOUT

@@ -25,10 +25,12 @@ export interface ExperienceProps {
     resource: Resource
     def: CollectionDef // schema (field types)
     map: Record<string, string> // role -> schema field name
+    references?: Record<string, string> // reference role -> target collection
     onPatch: (p: ResourcePatch) => void
     onEditTitle?: () => void
     onRename?: (from: string, to: string) => void
     onDelete?: () => void
+    onOpenRef?: (collection: string, slug: string) => void
     editable?: boolean
 }
 
