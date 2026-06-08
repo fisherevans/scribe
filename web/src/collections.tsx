@@ -13,12 +13,21 @@ export interface ResourcePatch {
     notes?: string
 }
 
+// A Referencer is a resource that points at some target slug through one of its
+// reference fields. Used to drive cascade rename/delete across collections.
+export interface Referencer {
+    collection: string
+    slug: string
+    field: string
+}
+
 export interface ExperienceProps {
     resource: Resource
     def: CollectionDef // schema (field types)
     map: Record<string, string> // role -> schema field name
     onPatch: (p: ResourcePatch) => void
     onEditTitle?: () => void
+    onRename?: (from: string, to: string) => void
     onDelete?: () => void
     editable?: boolean
 }

@@ -61,7 +61,7 @@ function ImageBlockView({ node, updateAttributes, deleteNode, editor }: NodeView
                 <img className="imageblock__img" src={src} alt={alt} />
             ) : (
                 <div className="imageblock__placeholder" contentEditable={false}>
-                    <span>🖼 no image — paste a URL below</span>
+                    <span>🖼 no image - paste a URL below</span>
                 </div>
             )}
 

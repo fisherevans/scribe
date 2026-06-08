@@ -17,12 +17,13 @@ interface Props {
     onPatch: (patch: ResourcePatch) => void
     onRename: (from: string, to: string) => void
     onDelete: () => void
+    onOpenRef?: (collection: string, slug: string) => void
 }
 
 // Details = the deferred metadata for a post. Mapped optional roles render at
 // top; everything the experience doesn't cover (unmapped schema fields) is
 // preserved and editable under "additional fields" (hidden by default).
-export function PublishSheet({ resource, map, references, def, open, onClose, onPatch, onRename, onDelete }: Props) {
+export function PublishSheet({ resource, map, references, def, open, onClose, onPatch, onRename, onDelete, onOpenRef }: Props) {
     const [slugDraft, setSlugDraft] = useState('')
     useEffect(() => setSlugDraft(resource?.slug ?? ''), [resource?.slug])
 
@@ -62,7 +63,7 @@ export function PublishSheet({ resource, map, references, def, open, onClose, on
                         {map.tags && references.tags && (
                             <div className="field">
                                 <span className="field__label">tags</span>
-                                <ReferencePicker target={references.tags} value={flist(r, map.tags)} onChange={(slugs) => setField(map.tags, slugs)} />
+                                <ReferencePicker target={references.tags} value={flist(r, map.tags)} onChange={(slugs) => setField(map.tags, slugs)} onOpen={onOpenRef && ((slug) => onOpenRef(references.tags, slug))} />
                             </div>
                         )}
 

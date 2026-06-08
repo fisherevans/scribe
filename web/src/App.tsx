@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from './api'
 import type { Resource, Schema } from './types'
-import { fstr } from './types'
-import { viewFor, type CollectionView, type ResourcePatch } from './collections'
+import { fstr, flist } from './types'
+import { viewFor, type CollectionView, type ResourcePatch, type Referencer } from './collections'
 import { resolve, isConfigured, type Mapping } from './mapping'
 import { DataContext, type DataApi } from './data'
 import { CollectionRail } from './components/CollectionRail'
@@ -11,6 +11,7 @@ import { TopBar, type SaveStatus } from './components/TopBar'
 import { PublishSheet } from './components/PublishSheet'
 import { SettingsPanel } from './components/SettingsPanel'
 import { SetupWizard } from './components/SetupWizard'
+import { CascadeDialog, type Cascade } from './components/CascadeDialog'
 import { TitleSlugModal } from './components/TitleSlugModal'
 import { applyTheme, DEFAULT_THEME, loadTheme, saveTheme, type Theme } from './theme'
 import { loadSettings, saveSettings, liveUrl, type AppSettings } from './settings'
@@ -46,6 +47,7 @@ export default function App() {
     const [settingsOpen, setSettingsOpen] = useState(false)
     const [setupOpen, setSetupOpen] = useState(false)
     const [editMode, setEditMode] = useState(false)
+    const [cascade, setCascade] = useState<Cascade | null>(null)
     const [modal, setModal] = useState<{ open: boolean; mode: 'new' | 'edit' }>({ open: false, mode: 'new' })
     const [theme, setTheme] = useState<Theme>(loadTheme)
     const [settings, setSettings] = useState<AppSettings>(loadSettings)
@@ -215,28 +217,88 @@ export default function App() {
         [active, collection],
     )
 
+    // Who points at (targetCollection, slug) via a reference field?
+    const findReferencers = useCallback((targetCollection: string, slug: string): Referencer[] => {
+        const out: Referencer[] = []
+        for (const v of views) {
+            for (const [role, target] of Object.entries(v.references)) {
+                if (target !== targetCollection) continue
+                const field = v.map[role]
+                if (!field) continue
+                for (const r of lists[v.name] ?? []) {
+                    if (flist(r, field).includes(slug)) out.push({ collection: v.name, slug: r.slug, field })
+                }
+            }
+        }
+        return out
+    }, [views, lists])
+
+    const doRename = useCallback(async (c: string, from: string, to: string) => {
+        await api.rename(c, from, to)
+        setLists((cur) => ({ ...cur, [c]: (cur[c] ?? []).map((r) => (r.slug === from ? { ...r, slug: to } : r)) }))
+        setSel((cur) => ({ ...cur, [c]: to }))
+        writeHash(c, to, true)
+    }, [])
+
+    const doDelete = useCallback((c: string, slug: string) => {
+        return api.remove(c, slug).then(() => {
+            const next = (lists[c] ?? []).filter((r) => r.slug !== slug)[0]?.slug ?? null
+            setLists((cur) => ({ ...cur, [c]: (cur[c] ?? []).filter((r) => r.slug !== slug) }))
+            setSel((cur) => ({ ...cur, [c]: next }))
+            writeHash(c, next, true); setDetails(false); setStatus('idle')
+        })
+    }, [lists])
+
+    // Edit the referencing resources: replace (rename) or remove (delete) a slug.
+    const updateReferencers = useCallback(async (refs: Referencer[], from: string, to: string | null) => {
+        for (const ref of refs) {
+            const r = (lists[ref.collection] ?? []).find((x) => x.slug === ref.slug)
+            if (!r) continue
+            const next = flist(r, ref.field)
+                .flatMap((s) => (s === from ? (to ? [to] : []) : [s]))
+            const merged: Resource = { ...r, fields: { ...r.fields, [ref.field]: next } }
+            const saved = await api.save(ref.collection, ref.slug, merged)
+            setLists((cur) => ({ ...cur, [ref.collection]: cur[ref.collection].map((x) => (x.slug === ref.slug ? saved : x)) }))
+        }
+    }, [lists])
+
     const rename = useCallback(async (from: string, toRaw: string) => {
         const to = slugify(toRaw)
         if (!to || to === from) return
-        try {
-            await api.rename(collection, from, to)
-            setLists((cur) => ({ ...cur, [collection]: cur[collection].map((r) => (r.slug === from ? { ...r, slug: to } : r)) }))
-            setSel((cur) => ({ ...cur, [collection]: to }))
-            writeHash(collection, to, true)
-        } catch (e) { alert(`Couldn't rename: ${e instanceof Error ? e.message : e}`) }
-    }, [collection])
+        const refs = findReferencers(collection, from)
+        if (refs.length > 0) { setCascade({ kind: 'rename', collection, from, to, title: view?.feedTitle(active!) ?? from, refs }); return }
+        try { await doRename(collection, from, to) } catch (e) { alert(`Couldn't rename: ${e instanceof Error ? e.message : e}`) }
+    }, [collection, findReferencers, doRename, view, active])
 
     const deleteActive = useCallback(async () => {
         if (!active || !view) return
+        const refs = findReferencers(collection, active.slug)
+        if (refs.length > 0) { setCascade({ kind: 'delete', collection, from: active.slug, title: view.feedTitle(active), refs }); return }
         if (!window.confirm(`Delete “${view.feedTitle(active)}”? This removes the file.`)) return
-        const slug = active.slug
-        try { await api.remove(collection, slug) } catch (e) { alert(`Couldn't delete: ${e instanceof Error ? e.message : e}`); return }
-        const rest = items.filter((r) => r.slug !== slug)
-        const next = rest[0]?.slug ?? null
-        setLists((cur) => ({ ...cur, [collection]: cur[collection].filter((r) => r.slug !== slug) }))
-        setSel((cur) => ({ ...cur, [collection]: next }))
-        writeHash(collection, next, true); setDetails(false); setStatus('idle')
-    }, [active, view, collection, items])
+        try { await doDelete(collection, active.slug) } catch (e) { alert(`Couldn't delete: ${e instanceof Error ? e.message : e}`) }
+    }, [active, view, collection, findReferencers, doDelete])
+
+    // Resolve a cascade dialog choice.
+    const runCascade = useCallback(async (updateRefs: boolean) => {
+        if (!cascade) return
+        const { kind, collection: c, from, to, refs } = cascade
+        try {
+            if (kind === 'rename' && to) {
+                await doRename(c, from, to)
+                if (updateRefs) await updateReferencers(refs, from, to)
+            } else {
+                await doDelete(c, from)
+                if (updateRefs) await updateReferencers(refs, from, null)
+            }
+        } catch (e) { alert(`Couldn't apply: ${e instanceof Error ? e.message : e}`) }
+        setCascade(null)
+    }, [cascade, doRename, doDelete, updateReferencers])
+
+    // Open a referenced resource for editing (from the reference picker).
+    const openResource = useCallback((c: string, slug: string) => {
+        setCollection(c); setSel((cur) => ({ ...cur, [c]: slug })); writeHash(c, slug)
+        setEditMode(false); setDetails(false); setStatus('idle')
+    }, [])
 
     const onModalSubmit = useCallback(
         async (title: string, slug: string) => {
@@ -309,7 +371,7 @@ export default function App() {
                 />
                 <div className={'app__canvas' + (collection === 'posts' ? '' : ' app__canvas--form')}>
                     {active && view && Experience ? (
-                        <Experience resource={active} def={view.def} map={view.map} onPatch={patch} onEditTitle={() => setModal({ open: true, mode: 'edit' })} onDelete={deleteActive} editable={editMode} />
+                        <Experience resource={active} def={view.def} map={view.map} onPatch={patch} onEditTitle={() => setModal({ open: true, mode: 'edit' })} onRename={rename} onDelete={deleteActive} editable={editMode} />
                     ) : (
                         <div className="empty">{view ? `Nothing here yet. Press “${view.newLabel}”.` : 'Loading…'}</div>
                     )}
@@ -317,8 +379,9 @@ export default function App() {
             </main>
 
             {view?.hasDetails && (
-                <PublishSheet resource={active} map={view.map} references={view.references} def={view.def} open={details} onClose={() => setDetails(false)} onPatch={patch} onRename={rename} onDelete={deleteActive} />
+                <PublishSheet resource={active} map={view.map} references={view.references} def={view.def} open={details} onClose={() => setDetails(false)} onPatch={patch} onRename={rename} onDelete={deleteActive} onOpenRef={openResource} />
             )}
+            <CascadeDialog cascade={cascade} onResolve={runCascade} onCancel={() => setCascade(null)} />
             <TitleSlugModal
                 open={modal.open}
                 mode={modal.mode}

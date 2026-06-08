@@ -46,7 +46,7 @@ export function Feed({ view, items, activeSlug, allTags, onSelect, onNew }: Prop
                     {isPosts && <option value="newest">Newest</option>}
                     {isPosts && <option value="oldest">Oldest</option>}
                     {isPosts && <option value="draftsFirst">Drafts first</option>}
-                    <option value="title">Title A–Z</option>
+                    <option value="title">Title A-Z</option>
                 </select>
                 {isPosts && (
                     <select className="ctrl" value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
