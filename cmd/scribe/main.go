@@ -16,6 +16,7 @@ import (
 
 	"github.com/fisherevans/scribe/internal/api"
 	"github.com/fisherevans/scribe/internal/content"
+	"github.com/fisherevans/scribe/internal/git"
 	"github.com/fisherevans/scribe/internal/mapping"
 	"github.com/fisherevans/scribe/internal/schema"
 	"github.com/fisherevans/scribe/internal/store"
@@ -25,6 +26,10 @@ func main() {
 	addr := flag.String("addr", envOr("SCRIBE_ADDR", ":8080"), "listen address")
 	repo := flag.String("repo", os.Getenv("SCRIBE_REPO"), "path to the blog repo checkout")
 	data := flag.String("data", envOr("SCRIBE_DATA", defaultDataDir()), "dir for private app-side data (notes); never the repo")
+	noGit := flag.Bool("no-git", envBool("SCRIBE_NO_GIT"), "disable the git staging/promote layer (write-only to the working tree)")
+	stagingBranch := flag.String("staging-branch", envOr("SCRIBE_STAGING_BRANCH", "staging"), "branch edits are committed to")
+	mainBranch := flag.String("main-branch", os.Getenv("SCRIBE_MAIN_BRANCH"), "branch promote publishes to (default: current branch)")
+	push := flag.Bool("push", envBool("SCRIBE_PUSH"), "push staging/main to origin on commit/promote")
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -53,9 +58,24 @@ func main() {
 	}
 	mstore := mapping.NewStore(*repo)
 	publicDir := filepath.Join(*repo, "public")
+
+	// Git staging/promote layer. Enabled by default when the repo is a git work
+	// tree; a clean tree is required so scribe can own the staging branch. On
+	// failure we log and run write-only rather than refuse to start.
+	var grepo *git.Repo
+	if !*noGit {
+		grepo, err = git.Open(*repo, *stagingBranch, *mainBranch, *push)
+		if err != nil {
+			log.Warn("git sync disabled, running write-only", "err", err)
+		} else {
+			st, mn := grepo.Branches()
+			log.Info("git sync enabled", "staging", st, "main", mn, "push", *push)
+		}
+	}
+
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           api.New(cstore, notes, mstore, publicDir).Routes(),
+		Handler:           api.New(cstore, notes, mstore, grepo, publicDir).Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -84,6 +104,11 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func envBool(key string) bool {
+	v := os.Getenv(key)
+	return v == "1" || v == "true"
 }
 
 // defaultDataDir keeps private notes out of the repo, under the user's config dir.
