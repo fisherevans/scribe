@@ -23,15 +23,16 @@ that scribe's container clones the blog repo onto its volume on first boot (see
 ## Prerequisites
 
 1. **Image published.** CI (`.github/workflows/build.yml` in `fisherevans/scribe`)
-   publishes `ghcr.io/fisherevans/scribe`. The manifests pin `:v0.1.0`. Confirm
-   that tag exists:
+   publishes `ghcr.io/fisherevans/scribe`. The manifests pin **`:v0.1.1`** (the
+   current release; published by CI). Confirm the tag exists before deploying:
    ```sh
-   gh api /orgs/fisherevans/packages/container/scribe/versions --jq '.[].metadata.container.tags[]' 2>/dev/null \
-     || gh api /users/fisherevans/packages/container/scribe/versions --jq '.[].metadata.container.tags[]'
+   gh api /users/fisherevans/packages/container/scribe/versions --jq '.[].metadata.container.tags[]' 2>/dev/null \
+     || gh api /orgs/fisherevans/packages/container/scribe/versions --jq '.[].metadata.container.tags[]'
    ```
-   If `v0.1.0` is missing, cut it in the scribe repo (`git tag v0.1.0 && git push origin v0.1.0`,
-   wait for the `build image` workflow to finish), or temporarily pin `:latest`
-   in `deployment.yaml` for a first smoke deploy.
+   If it's missing for any reason, cut it from the scribe repo
+   (`git tag v0.1.1 && git push origin v0.1.1`, wait for the `build image`
+   workflow), or temporarily pin `:latest` in `deployment.yaml` for a first
+   smoke deploy.
 
 2. **GitHub push token.** scribe needs a token with push access to
    `fisherevans/log` (clone + push `main` and `staging`). The existing
