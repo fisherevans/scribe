@@ -1077,6 +1077,26 @@ button.chip__label:hover { text-decoration: underline; }
 .publish__center .btn { margin-top: 1.2rem; }
 .btn--block { width: 100%; justify-content: center; }
 
+/* Sync status banner (conflict / error from the git pull-reconcile loop) */
+.syncbanner {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+    display: flex; align-items: center; gap: 0.7rem;
+    padding: 0.6rem 1rem;
+    font-size: 0.84rem; color: #1a1208;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+.syncbanner--conflict { background: var(--brass); }
+.syncbanner--error { background: var(--rose); color: #fff; }
+.syncbanner__icon { font-size: 1rem; flex: none; }
+.syncbanner__msg { flex: 1; line-height: 1.35; }
+.syncbanner__btn {
+    flex: none; font-family: var(--mono); font-size: 0.72rem;
+    background: rgba(0, 0, 0, 0.22); color: inherit;
+    border: none; border-radius: 0.4rem; padding: 0.3rem 0.7rem; cursor: pointer;
+}
+.syncbanner__btn:hover:not(:disabled) { background: rgba(0, 0, 0, 0.34); }
+.syncbanner__btn:disabled { opacity: 0.6; cursor: default; }
+
 @media (prefers-reduced-motion: reduce) {
     * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }

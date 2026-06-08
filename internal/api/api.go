@@ -8,8 +8,11 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"math/rand"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/fisherevans/scribe/internal/content"
@@ -24,16 +27,21 @@ type Server struct {
 	mapping   *mapping.Store
 	git       *git.Repo // nil when the git staging layer is disabled
 	publicDir string
+	ui        fs.FS // embedded/served editor UI; nil = API-only (dev uses Vite)
 }
 
-func New(c *content.Store, notes *store.Notes, m *mapping.Store, g *git.Repo, publicDir string) *Server {
-	return &Server{store: c, notes: notes, mapping: m, git: g, publicDir: publicDir}
+func New(c *content.Store, notes *store.Notes, m *mapping.Store, g *git.Repo, publicDir string, ui fs.FS) *Server {
+	return &Server{store: c, notes: notes, mapping: m, git: g, publicDir: publicDir, ui: ui}
 }
 
 func (s *Server) Routes() *http.ServeMux {
 	mux := http.NewServeMux()
-	// Serve the repo's public/ so site-relative asset paths in content resolve.
-	mux.Handle("/", http.FileServer(http.Dir(s.publicDir)))
+	// Root handler serves the blog's public/ assets and, when a UI is bundled,
+	// the editor PWA (its own assets live under /_app/, see serveRoot).
+	if s.ui != nil {
+		mux.Handle("/_app/", http.StripPrefix("/_app/", http.FileServer(http.FS(s.ui))))
+	}
+	mux.HandleFunc("/", s.serveRoot)
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/schema", s.getSchema)
 	mux.HandleFunc("GET /api/mapping", s.getMapping)
@@ -45,6 +53,8 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.HandleFunc("POST /api/c/{collection}/{slug}/rename", s.rename)
 	mux.HandleFunc("GET /api/publish", s.publishDiff)
 	mux.HandleFunc("POST /api/publish", s.publish)
+	mux.HandleFunc("GET /api/sync", s.syncStatus)
+	mux.HandleFunc("POST /api/sync", s.syncNow)
 	mux.HandleFunc("GET /api/c/{collection}/{slug}/serialized", s.serialized)
 	return mux
 }
@@ -302,6 +312,31 @@ func (s *Server) publish(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, map[string]any{"published": n, "enabled": true})
 }
 
+// syncStatus reports the live git sync state (rev, conflict/ok, last sync/backup
+// times). The web polls this: a changed rev means refetch content; a "conflict"
+// state raises a reconcile banner.
+func (s *Server) syncStatus(w http.ResponseWriter, _ *http.Request) {
+	if s.git == nil {
+		writeJSON(w, git.SyncStatus{State: "disabled"})
+		return
+	}
+	writeJSON(w, s.git.Status())
+}
+
+// syncNow triggers a pull/reconcile on demand (the UI "retry" / "sync now"
+// action), then returns the resulting status.
+func (s *Server) syncNow(w http.ResponseWriter, _ *http.Request) {
+	if s.git == nil {
+		writeJSON(w, git.SyncStatus{State: "disabled"})
+		return
+	}
+	if err := s.git.Sync(); err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, s.git.Status())
+}
+
 // titleOf is a best-effort human label for a resource (title/name field, else
 // slug). Deleted resources are gone from the working tree, so they fall back to
 // the slug.
@@ -354,6 +389,34 @@ func (s *Server) serialized(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---- helpers ------------------------------------------------------------
+
+// serveRoot resolves everything that isn't an explicit API or /_app/ route:
+// first the blog's public/ assets (so content paths like /posts/... and
+// /assets/uploads/... resolve), then - for any other path - the editor's SPA
+// shell (index.html), since the UI uses hash routing. Unmatched /api/* still
+// 404s rather than returning HTML.
+func (s *Server) serveRoot(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		http.NotFound(w, r)
+		return
+	}
+	clean := filepath.Clean("/" + r.URL.Path)
+	if f := filepath.Join(s.publicDir, clean); clean != "/" {
+		if st, err := os.Stat(f); err == nil && !st.IsDir() {
+			http.ServeFile(w, r, f)
+			return
+		}
+	}
+	if s.ui != nil {
+		index, err := fs.ReadFile(s.ui, "index.html")
+		if err == nil {
+			w.Header().Set("content-type", "text/html; charset=utf-8")
+			w.Write(index)
+			return
+		}
+	}
+	http.NotFound(w, r)
+}
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, map[string]string{"status": "ok"})
