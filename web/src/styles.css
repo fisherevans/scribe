@@ -806,8 +806,11 @@ input[type='date'].field__input { font-family: var(--mono); font-size: 0.82rem; 
     gap: 0.35rem;
     align-items: center;
 }
-.chip__x { color: var(--ink-faint); font-size: 0.62rem; }
-.chip:hover .chip__x { color: var(--rose); }
+.chip__label { background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: default; }
+button.chip__label { cursor: pointer; }
+button.chip__label:hover { text-decoration: underline; }
+.chip__x { background: none; border: none; padding: 0; margin: 0; line-height: 1; color: var(--ink-faint); font-size: 0.62rem; cursor: pointer; }
+.chip__x:hover { color: var(--rose); }
 .chips__input { flex: 1; min-width: 5rem; background: none; border: none; outline: none; color: var(--ink-on-desk); font-family: var(--mono); font-size: 0.78rem; padding: 0.15rem; }
 .suggest {
     margin-top: 0.35rem;
@@ -1014,6 +1017,30 @@ input[type='date'].field__input { font-family: var(--mono); font-size: 0.82rem; 
     .topbar__ico { display: inline-block; width: 1.3rem; text-align: center; }
     .topbar__scrim { display: block; position: fixed; inset: 0; z-index: 90; }
 }
+.ffield__hint { font-family: var(--mono); font-size: 0.6rem; text-transform: none; letter-spacing: 0; color: var(--ink-faint); margin-left: 0.5rem; }
+
+/* Cascade rename/delete confirmation */
+.scrim--modal { z-index: 110; background: rgba(10, 8, 6, 0.62); }
+.cascade {
+    position: fixed; z-index: 120;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: min(28rem, calc(100vw - 2rem));
+    background: var(--desk-3); border: 1px solid var(--desk-line);
+    border-radius: 0.9rem; padding: 1.4rem;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+.cascade__title { font-size: 1.05rem; font-weight: 600; color: var(--ink); margin: 0 0 0.35rem; }
+.cascade__sub { font-size: 0.82rem; color: var(--ink-mute); margin: 0; line-height: 1.5; }
+.cascade__slug { font-family: var(--mono); font-size: 0.78rem; color: var(--ink-on-desk); background: var(--desk); padding: 0.05rem 0.3rem; border-radius: 4px; }
+.cascade__refs { list-style: none; margin: 1rem 0; padding: 0.5rem; max-height: 14rem; overflow-y: auto; background: var(--desk); border: 1px solid var(--desk-line); border-radius: 0.6rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.cascade__ref { font-size: 0.82rem; color: var(--ink-on-desk); display: flex; align-items: baseline; gap: 0.5rem; }
+.cascade__refcol { font-family: var(--mono); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-faint); background: var(--desk-3); padding: 0.1rem 0.35rem; border-radius: 4px; }
+.cascade__ref--more { color: var(--ink-faint); font-style: italic; }
+.cascade__actions { display: flex; gap: 0.6rem; justify-content: flex-end; }
+.cascade__actions .btn { flex: 1; justify-content: center; }
+.cascade__cancel { display: block; width: 100%; margin-top: 0.75rem; background: none; border: none; color: var(--ink-faint); font-size: 0.78rem; cursor: pointer; }
+.cascade__cancel:hover { color: var(--ink-mute); }
+
 @media (prefers-reduced-motion: reduce) {
     * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }

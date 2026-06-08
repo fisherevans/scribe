@@ -37,7 +37,7 @@ export function FieldMapper({ def, value, onChange }: Props) {
                 </span>
                 <span className="maprow__arrow">←</span>
                 <select className={'maprow__src maprow__src--' + status} value={bound ?? ''} onChange={(e) => setRole(role.role, e.target.value)}>
-                    <option value="">— not mapped —</option>
+                    <option value="">- not mapped -</option>
                     {def.fields.map((f) => (
                         <option key={f.name} value={f.name}>{f.name} ({f.type}{f.list ? '[]' : ''})</option>
                     ))}
@@ -58,18 +58,18 @@ export function FieldMapper({ def, value, onChange }: Props) {
 
             {required.length > 0 && (
                 <div className="mbucket mbucket--req">
-                    <div className="mbucket__h">● required — must bind</div>
+                    <div className="mbucket__h">● required - must bind</div>
                     {required.map(row)}
                 </div>
             )}
             {optional.length > 0 && (
                 <div className="mbucket mbucket--opt">
-                    <div className="mbucket__h">○ optional — bound where present</div>
+                    <div className="mbucket__h">○ optional - bound where present</div>
                     {optional.map(row)}
                 </div>
             )}
             <div className="mbucket mbucket--raw">
-                <div className="mbucket__h">▢ raw — carried as-is ({raw.length})</div>
+                <div className="mbucket__h">▢ raw - carried as-is ({raw.length})</div>
                 {raw.length > 0 ? (
                     <div className="mraw">{raw.map((f) => <span key={f.name} className="mraw__chip">{f.name} · {f.type}{f.list ? '[]' : ''}</span>)}</div>
                 ) : (

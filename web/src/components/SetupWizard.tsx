@@ -30,7 +30,7 @@ export function SetupWizard({ open, firstRun, schema, initial, onSave, onClose }
                             <div>
                                 <div className="setup__title">{firstRun ? 'Set up scribe for this site' : 'Edit type mappings'}</div>
                                 <div className="setup__sub">
-                                    Found {schema.collections.length} collections in <code>.pages.yml</code>. scribe recommended an editor for each — confirm or adjust the field mapping, then save.
+                                    Found {schema.collections.length} collections in <code>.pages.yml</code>. scribe recommended an editor for each - confirm or adjust the field mapping, then save.
                                 </div>
                             </div>
                             <button className="sheet__close" type="button" onClick={onClose}>✕</button>

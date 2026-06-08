@@ -6,12 +6,13 @@ interface Props {
     target: string // collection this field references
     value: string[] // selected slugs
     onChange: (slugs: string[]) => void
+    onOpen?: (slug: string) => void // navigate to the referenced resource
 }
 
 // Generalized tag chips: a reference picker that autocompletes against another
 // collection. Stores slugs, displays each referenced resource's label. Typing a
 // new value adds it as a slug (a forward reference, like a not-yet-created tag).
-export function ReferencePicker({ target, value, onChange }: Props) {
+export function ReferencePicker({ target, value, onChange, onOpen }: Props) {
     const data = useData()
     const [draft, setDraft] = useState('')
     const [focus, setFocus] = useState(false)
@@ -34,9 +35,14 @@ export function ReferencePicker({ target, value, onChange }: Props) {
         <div className="field">
             <div className="chips">
                 {value.map((slug) => (
-                    <button key={slug} className="chip" type="button" onClick={() => onChange(value.filter((x) => x !== slug))}>
-                        {data.labelFor(target, slug)} <span className="chip__x">✕</span>
-                    </button>
+                    <span key={slug} className="chip">
+                        {onOpen ? (
+                            <button className="chip__label" type="button" title="open" onClick={() => onOpen(slug)}>{data.labelFor(target, slug)}</button>
+                        ) : (
+                            <span className="chip__label">{data.labelFor(target, slug)}</span>
+                        )}
+                        <button className="chip__x" type="button" title="remove" onClick={() => onChange(value.filter((x) => x !== slug))}>✕</button>
+                    </span>
                 ))}
                 <input
                     className="chips__input"
