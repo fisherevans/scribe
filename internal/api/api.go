@@ -53,6 +53,8 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.HandleFunc("POST /api/c/{collection}/{slug}/rename", s.rename)
 	mux.HandleFunc("GET /api/publish", s.publishDiff)
 	mux.HandleFunc("POST /api/publish", s.publish)
+	mux.HandleFunc("GET /api/sync", s.syncStatus)
+	mux.HandleFunc("POST /api/sync", s.syncNow)
 	mux.HandleFunc("GET /api/c/{collection}/{slug}/serialized", s.serialized)
 	return mux
 }
@@ -308,6 +310,31 @@ func (s *Server) publish(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"published": n, "enabled": true})
+}
+
+// syncStatus reports the live git sync state (rev, conflict/ok, last sync/backup
+// times). The web polls this: a changed rev means refetch content; a "conflict"
+// state raises a reconcile banner.
+func (s *Server) syncStatus(w http.ResponseWriter, _ *http.Request) {
+	if s.git == nil {
+		writeJSON(w, git.SyncStatus{State: "disabled"})
+		return
+	}
+	writeJSON(w, s.git.Status())
+}
+
+// syncNow triggers a pull/reconcile on demand (the UI "retry" / "sync now"
+// action), then returns the resulting status.
+func (s *Server) syncNow(w http.ResponseWriter, _ *http.Request) {
+	if s.git == nil {
+		writeJSON(w, git.SyncStatus{State: "disabled"})
+		return
+	}
+	if err := s.git.Sync(); err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, s.git.Status())
 }
 
 // titleOf is a best-effort human label for a resource (title/name field, else

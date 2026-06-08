@@ -33,6 +33,8 @@ func main() {
 	stagingBranch := flag.String("staging-branch", envOr("SCRIBE_STAGING_BRANCH", "staging"), "branch edits are committed to")
 	mainBranch := flag.String("main-branch", os.Getenv("SCRIBE_MAIN_BRANCH"), "branch promote publishes to (default: current branch)")
 	push := flag.Bool("push", envBool("SCRIBE_PUSH"), "push staging/main to origin on commit/promote")
+	backupInterval := flag.Duration("backup-interval", envDur("SCRIBE_BACKUP_INTERVAL", 2*time.Minute), "how often to back up staging to origin")
+	syncInterval := flag.Duration("sync-interval", envDur("SCRIBE_SYNC_INTERVAL", time.Minute), "how often to pull external edits to the publish branch")
 	webDir := flag.String("web-dir", os.Getenv("SCRIBE_WEB_DIR"), "serve the built UI from this dir (overrides the embedded build)")
 	flag.Parse()
 
@@ -99,6 +101,24 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
+	// Background sync: when pushing to a remote, periodically back up staging
+	// (redundancy) and pull external edits to the publish branch (e.g. posts
+	// written in Pages CMS), rebasing staging on top. Conflicts are surfaced,
+	// never auto-resolved.
+	if grepo != nil && *push {
+		go ticker(ctx, *backupInterval, func() {
+			if err := grepo.BackupPush(); err != nil {
+				log.Warn("backup push failed", "err", err)
+			}
+		})
+		go ticker(ctx, *syncInterval, func() {
+			if err := grepo.Sync(); err != nil {
+				log.Warn("sync failed", "err", err)
+			}
+		})
+		log.Info("background sync running", "backup", *backupInterval, "sync", *syncInterval)
+	}
+
 	go func() {
 		log.Info("scribe listening", "addr", *addr, "repo", *repo)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -126,6 +146,29 @@ func envOr(key, def string) string {
 func envBool(key string) bool {
 	v := os.Getenv(key)
 	return v == "1" || v == "true"
+}
+
+func envDur(key string, def time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return def
+}
+
+// ticker runs fn every interval until ctx is cancelled. fn must not block long.
+func ticker(ctx context.Context, interval time.Duration, fn func()) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			fn()
+		}
+	}
 }
 
 // defaultDataDir keeps private notes out of the repo, under the user's config dir.

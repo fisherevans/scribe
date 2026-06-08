@@ -57,6 +57,21 @@ export const api = {
     publish(): Promise<PublishResult> {
         return fetch('/api/publish', { method: 'POST' }).then(json)
     },
+    syncStatus(): Promise<SyncStatus> {
+        return fetch('/api/sync').then(json)
+    },
+    syncNow(): Promise<SyncStatus> {
+        return fetch('/api/sync', { method: 'POST' }).then(json)
+    },
+}
+
+export interface SyncStatus {
+    state: 'ok' | 'conflict' | 'error' | 'disabled'
+    message: string
+    rev: string
+    lastSync?: string
+    lastBackup?: string
+    push: boolean
 }
 
 export interface PublishChange {

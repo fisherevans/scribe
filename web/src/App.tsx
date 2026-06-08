@@ -13,7 +13,8 @@ import { SettingsPanel } from './components/SettingsPanel'
 import { SetupWizard } from './components/SetupWizard'
 import { CascadeDialog, type Cascade } from './components/CascadeDialog'
 import { PublishReview, type PublishPhase } from './components/PublishReview'
-import type { PublishChange } from './api'
+import { SyncBanner } from './components/SyncBanner'
+import type { PublishChange, SyncStatus } from './api'
 import { TitleSlugModal } from './components/TitleSlugModal'
 import { applyTheme, DEFAULT_THEME, loadTheme, saveTheme, type Theme } from './theme'
 import { loadSettings, saveSettings, liveUrl, type AppSettings } from './settings'
@@ -48,6 +49,8 @@ export default function App() {
     const [publishPhase, setPublishPhase] = useState<PublishPhase>('review')
     const [publishResult, setPublishResult] = useState(0)
     const [publishError, setPublishError] = useState<string | null>(null)
+    const [sync, setSync] = useState<SyncStatus | null>(null)
+    const [syncRetrying, setSyncRetrying] = useState(false)
     const [drawer, setDrawer] = useState(false)
     const [details, setDetails] = useState(false)
     const [settingsOpen, setSettingsOpen] = useState(false)
@@ -214,6 +217,39 @@ export default function App() {
         } catch (e) {
             setPublishPhase('error'); setPublishError(e instanceof Error ? e.message : String(e))
         }
+    }, [refetchAll])
+
+    const retrySync = useCallback(async () => {
+        setSyncRetrying(true)
+        try { setSync(await api.syncNow()) } catch { /* surfaced via next poll */ }
+        setSyncRetrying(false)
+    }, [])
+
+    // Don't pull-refetch over an in-progress edit (would revert unsaved text).
+    const editingRef = useRef(false)
+    useEffect(() => { editingRef.current = editMode || status === 'edited' || status === 'saving' }, [editMode, status])
+
+    // Poll git sync status: a changed rev means content moved (an external Pages
+    // CMS edit was pulled in) -> refetch; a conflict raises the banner.
+    const lastRevRef = useRef<string | null>(null)
+    useEffect(() => {
+        let alive = true
+        const poll = async () => {
+            try {
+                const s = await api.syncStatus()
+                if (!alive) return
+                setSync(s)
+                if (s.state === 'disabled' || !s.rev) return
+                if (lastRevRef.current === null) { lastRevRef.current = s.rev; return }
+                if (s.rev !== lastRevRef.current) {
+                    lastRevRef.current = s.rev
+                    if (!editingRef.current) refetchAll()
+                }
+            } catch { /* transient; next tick retries */ }
+        }
+        poll()
+        const id = window.setInterval(poll, 20000)
+        return () => { alive = false; window.clearInterval(id) }
     }, [refetchAll])
 
     const onNew = useCallback(async () => {
@@ -383,6 +419,7 @@ export default function App() {
     const Experience = view?.Experience
     return (
         <DataContext.Provider value={dataApi}>
+        <SyncBanner status={sync} retrying={syncRetrying} onRetry={retrySync} />
         <div className={'app' + (drawer ? ' app--drawer' : '')}>
             <div className="app__nav">
                 <CollectionRail views={views} active={collection} onSelect={switchCollection} onSettings={() => setSettingsOpen(true)} />

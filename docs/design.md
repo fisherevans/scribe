@@ -127,7 +127,17 @@ this is rare.
 of that branch). Only the `staging -> main` merge can conflict, and only when
 `main` advanced independently.
 
-### Durability / backup
+### Durability / backup + external-edit reconcile
+
+> Implemented as two background loops (active only with `--push`):
+> `--backup-interval` (default 2m) pushes `staging` to `origin` when it advanced
+> (force-with-lease, since publish/sync can rewind it); `--sync-interval`
+> (default 1m) fetches the publish branch and, if it moved (e.g. a post written
+> in Pages CMS), rebases `staging` on top so the editor sees the new content.
+> Conflicts are never auto-resolved: the rebase aborts, `staging` is left
+> untouched, and a `conflict` state is exposed at `GET /api/sync` for the UI to
+> surface (the web polls it, refetches on a changed rev, and shows a reconcile
+> banner). Sync skips while the working tree is dirty (a save mid-flight).
 
 `staging` pushes to the public `origin` (`fisherevans/log`) every ~30-60 min.
 Drafts on a non-default branch being publicly visible is acceptable: it's no
