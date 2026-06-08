@@ -1,0 +1,15 @@
+# Persistent working set: the blog repo checkout (/data/repo) + scribe's private
+# notes (/data/scribe). Must survive pod restarts and node rebuilds, so it uses
+# the NFS-backed StorageClass (Retain reclaim policy) rather than local-path.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: scribe-data
+  namespace: scribe
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: nfs-nottinghamvault
+  resources:
+    requests:
+      storage: 5Gi
