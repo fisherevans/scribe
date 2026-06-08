@@ -121,65 +121,125 @@ func (r *Repo) Commit(slug string, paths []string, summary string) error {
 	return nil
 }
 
-// Promote brings the staging version of the given resource's paths onto the
-// main branch and commits it there, then returns to staging. Handles both
-// edits (file present on staging) and deletes (absent on staging -> removed on
-// main).
-func (r *Repo) Promote(paths []string, summary string) error {
+// Change is one path's difference between main and staging.
+type Change struct {
+	Status  string // "added" | "modified" | "deleted" | "renamed"
+	Path    string // current path (new path for a rename)
+	OldPath string // prior path, for renames only
+}
+
+// Diff is the full set of staged-but-unpublished changes (staging vs main).
+// This is exactly what Publish will land on main, atomically.
+func (r *Repo) Diff() ([]Change, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, err := r.run("checkout", r.main); err != nil {
-		return fmt.Errorf("checkout main: %w", err)
-	}
-	// Always end back on staging, even on error.
-	defer r.run("checkout", r.staging)
+	return r.diffChanges()
+}
 
-	for _, p := range paths {
-		if r.existsOnBranch(r.staging, p) {
-			if _, err := r.run("checkout", r.staging, "--", p); err != nil {
-				return fmt.Errorf("take staging %s: %w", p, err)
-			}
-		} else {
-			// Deleted on staging: remove from main if present.
-			if r.existsOnBranch(r.main, p) {
-				if _, err := r.run("rm", "-q", "--", p); err != nil {
-					return fmt.Errorf("remove %s on main: %w", p, err)
-				}
-			}
+// diffChanges computes the staging-vs-main changeset. Caller holds r.mu.
+func (r *Repo) diffChanges() ([]Change, error) {
+	out, err := r.run("diff", "--name-status", "-M", r.main, r.staging)
+	if err != nil {
+		return nil, err
+	}
+	var changes []Change
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		code := fields[0]
+		switch {
+		case strings.HasPrefix(code, "A"):
+			changes = append(changes, Change{Status: "added", Path: fields[1]})
+		case strings.HasPrefix(code, "M"):
+			changes = append(changes, Change{Status: "modified", Path: fields[1]})
+		case strings.HasPrefix(code, "D"):
+			changes = append(changes, Change{Status: "deleted", Path: fields[1]})
+		case strings.HasPrefix(code, "R") && len(fields) >= 3:
+			changes = append(changes, Change{Status: "renamed", OldPath: fields[1], Path: fields[2]})
+		case len(fields) >= 2:
+			changes = append(changes, Change{Status: "modified", Path: fields[len(fields)-1]})
 		}
 	}
-	if clean, err := r.indexClean(); err != nil {
-		return err
-	} else if clean {
-		return nil // already promoted; nothing to do
-	}
-	if _, err := r.run("commit", "-m", summary); err != nil {
-		return fmt.Errorf("commit on main: %w", err)
-	}
-	if r.push {
-		if err := r.pushBranch(r.main, false); err != nil {
-			return err
-		}
-	}
-	return nil
+	return changes, nil
 }
 
 // StagedPaths returns the set of repo-relative paths whose staging version
-// differs from main (i.e. resources with unpublished changes).
+// differs from main (i.e. resources with unpublished changes). A renamed
+// resource reports both its old and new path as staged.
 func (r *Repo) StagedPaths() (map[string]bool, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	out, err := r.run("diff", "--name-only", r.main, r.staging)
+	changes, err := r.Diff()
 	if err != nil {
 		return nil, err
 	}
 	set := map[string]bool{}
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		if line != "" {
-			set[line] = true
+	for _, c := range changes {
+		if c.Path != "" {
+			set[c.Path] = true
+		}
+		if c.OldPath != "" {
+			set[c.OldPath] = true
 		}
 	}
 	return set, nil
+}
+
+// Publish lands the entire staging changeset onto main as one squash commit,
+// pushes main (when push is enabled), then resets staging to main so the two
+// converge and the next session starts clean. This is atomic by design: all
+// staged changes publish together, so referential edits (e.g. a cascading tag
+// rename across several posts) never land half-applied. Returns the number of
+// changed paths; 0 means nothing was staged.
+func (r *Repo) Publish(summary string) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	changes, err := r.diffChanges()
+	if err != nil {
+		return 0, err
+	}
+	if len(changes) == 0 {
+		return 0, nil
+	}
+
+	if _, err := r.run("checkout", r.main); err != nil {
+		return 0, fmt.Errorf("checkout main: %w", err)
+	}
+	// Squash everything staging has beyond main into main's index.
+	if _, err := r.run("merge", "--squash", r.staging); err != nil {
+		r.run("merge", "--abort")
+		r.run("checkout", r.staging)
+		return 0, fmt.Errorf("merge staging: %w", err)
+	}
+	if clean, err := r.indexClean(); err != nil || clean {
+		r.run("checkout", r.staging)
+		return 0, err
+	}
+	if _, err := r.run("commit", "-m", summary); err != nil {
+		r.run("checkout", r.staging)
+		return 0, fmt.Errorf("commit on main: %w", err)
+	}
+	if r.push {
+		if err := r.pushBranch(r.main, false); err != nil {
+			r.run("checkout", r.staging)
+			return 0, err
+		}
+	}
+	// Converge staging onto the freshly published main.
+	if _, err := r.run("checkout", r.staging); err != nil {
+		return 0, fmt.Errorf("checkout staging: %w", err)
+	}
+	if _, err := r.run("reset", "--hard", r.main); err != nil {
+		return 0, fmt.Errorf("reset staging to main: %w", err)
+	}
+	r.headSlug, r.headPushed = "", false
+	if r.push {
+		if err := r.pushBranch(r.staging, true); err != nil {
+			return len(changes), err
+		}
+	}
+	return len(changes), nil
 }
 
 // ---- internals ----------------------------------------------------------

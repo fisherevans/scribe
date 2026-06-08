@@ -12,6 +12,8 @@ import { PublishSheet } from './components/PublishSheet'
 import { SettingsPanel } from './components/SettingsPanel'
 import { SetupWizard } from './components/SetupWizard'
 import { CascadeDialog, type Cascade } from './components/CascadeDialog'
+import { PublishReview, type PublishPhase } from './components/PublishReview'
+import type { PublishChange } from './api'
 import { TitleSlugModal } from './components/TitleSlugModal'
 import { applyTheme, DEFAULT_THEME, loadTheme, saveTheme, type Theme } from './theme'
 import { loadSettings, saveSettings, liveUrl, type AppSettings } from './settings'
@@ -41,7 +43,11 @@ export default function App() {
     const [lists, setLists] = useState<Record<string, Resource[]>>({})
     const [sel, setSel] = useState<Record<string, string | null>>({})
     const [status, setStatus] = useState<SaveStatus>('idle')
-    const [promoting, setPromoting] = useState(false)
+    const [publishOpen, setPublishOpen] = useState(false)
+    const [publishDiff, setPublishDiff] = useState<PublishChange[] | null>(null)
+    const [publishPhase, setPublishPhase] = useState<PublishPhase>('review')
+    const [publishResult, setPublishResult] = useState(0)
+    const [publishError, setPublishError] = useState<string | null>(null)
     const [drawer, setDrawer] = useState(false)
     const [details, setDetails] = useState(false)
     const [settingsOpen, setSettingsOpen] = useState(false)
@@ -170,13 +176,45 @@ export default function App() {
         [active, collection, queueSave],
     )
 
-    const promote = useCallback(async () => {
-        if (!active) return
-        setPromoting(true)
-        const next = await api.promote(collection, active.slug)
-        setLists((cur) => ({ ...cur, [collection]: cur[collection].map((r) => (r.slug === next.slug ? next : r)) }))
-        setPromoting(false); setStatus('saved')
-    }, [active, collection])
+    // How many resources have unpublished (staged) changes, across collections.
+    const stagedCount = useMemo(
+        () => Object.values(lists).reduce((n, rs) => n + rs.filter((r) => r.state === 'staged').length, 0),
+        [lists],
+    )
+
+    // Re-pull every collection (after a publish, states flip back to promoted).
+    const refetchAll = useCallback(async () => {
+        if (!schema) return
+        const names = schema.collections.map((c) => c.name)
+        const results = await Promise.all(names.map((c) => api.list(c)))
+        setLists((cur) => {
+            const next: Record<string, Resource[]> = { ...cur }
+            names.forEach((c, i) => { next[c] = results[i] ?? [] })
+            return next
+        })
+    }, [schema])
+
+    // Publish = review the whole staged changeset, then commit + push it atomically.
+    const openPublish = useCallback(async () => {
+        setPublishPhase('review'); setPublishError(null); setPublishDiff(null); setPublishOpen(true)
+        try {
+            const d = await api.publishDiff()
+            setPublishDiff(d.changes)
+        } catch (e) {
+            setPublishPhase('error'); setPublishError(e instanceof Error ? e.message : String(e))
+        }
+    }, [])
+
+    const confirmPublish = useCallback(async () => {
+        setPublishPhase('publishing'); setPublishError(null)
+        try {
+            const res = await api.publish()
+            await refetchAll()
+            setPublishResult(res.published); setPublishPhase('done'); setStatus('saved')
+        } catch (e) {
+            setPublishPhase('error'); setPublishError(e instanceof Error ? e.message : String(e))
+        }
+    }, [refetchAll])
 
     const onNew = useCallback(async () => {
         if (collection === 'posts') { setModal({ open: true, mode: 'new' }); return }
@@ -362,12 +400,13 @@ export default function App() {
                     showEdit={collection === 'posts'}
                     editMode={editMode}
                     status={status}
-                    promoting={promoting}
+                    stagedCount={stagedCount}
+                    publishing={publishPhase === 'publishing'}
                     liveUrl={active && view ? liveUrl(settings.hostedDomain, view.livePath(active)) : null}
                     onMenu={() => setDrawer((d) => !d)}
                     onToggleEdit={() => setEditMode((m) => !m)}
                     onDetails={() => setDetails(true)}
-                    onPromote={promote}
+                    onPublish={openPublish}
                 />
                 <div className={'app__canvas' + (collection === 'posts' ? '' : ' app__canvas--form')}>
                     {active && view && Experience ? (
@@ -382,6 +421,15 @@ export default function App() {
                 <PublishSheet resource={active} map={view.map} references={view.references} def={view.def} open={details} onClose={() => setDetails(false)} onPatch={patch} onRename={rename} onDelete={deleteActive} onOpenRef={openResource} />
             )}
             <CascadeDialog cascade={cascade} onResolve={runCascade} onCancel={() => setCascade(null)} />
+            <PublishReview
+                open={publishOpen}
+                diff={publishDiff}
+                phase={publishPhase}
+                result={publishResult}
+                error={publishError}
+                onConfirm={confirmPublish}
+                onClose={() => setPublishOpen(false)}
+            />
             <TitleSlugModal
                 open={modal.open}
                 mode={modal.mode}
