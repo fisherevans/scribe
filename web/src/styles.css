@@ -258,7 +258,7 @@ button { font-family: inherit; cursor: pointer; }
     z-index: 95;
 }
 .topbar__secondary.is-open { display: flex; }
-.topbar__secondary .btn { justify-content: flex-start; width: 100%; border-color: transparent; }
+.topbar__secondary .btn { display: flex; justify-content: flex-start; text-align: left; width: 100%; border-color: transparent; }
 .topbar__secondary .btn:hover:not(:disabled) { border-color: var(--desk-line); }
 .topbar__scrim { display: block; position: fixed; inset: 0; z-index: 90; }
 .topbar__label { display: none; }
@@ -741,8 +741,8 @@ textarea.field__input { resize: vertical; }
 /* Tag page-content editor: a parchment box; extra left padding is the gutter the
    block drag handle sits in (so it's reachable, like the post body). */
 .tagbody { background: var(--paper); border: 1px solid var(--paper-line); border-radius: 0.6rem; padding: 0.85rem 1rem 0.85rem 1.85rem; }
-.tagbody .prose { font-size: 1.05rem; line-height: 1.6; }
-.tagbody .prose:focus { outline: none; }
+/* No size override here: the tag body is a writing surface, so it inherits the
+   same --prose-size / --prose-leading / fonts the appearance settings drive. */
 .ffield__labelrow { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; margin-bottom: 0.5rem; }
 .ffield__labelrow .ffield__label { margin-bottom: 0; }
 .ffield__expand {
