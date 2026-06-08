@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/fisherevans/scribe/internal/content"
+	"github.com/fisherevans/scribe/internal/git"
 	"github.com/fisherevans/scribe/internal/mapping"
 	"github.com/fisherevans/scribe/internal/store"
 )
@@ -21,11 +22,12 @@ type Server struct {
 	store     *content.Store
 	notes     *store.Notes
 	mapping   *mapping.Store
+	git       *git.Repo // nil when the git staging layer is disabled
 	publicDir string
 }
 
-func New(c *content.Store, notes *store.Notes, m *mapping.Store, publicDir string) *Server {
-	return &Server{store: c, notes: notes, mapping: m, publicDir: publicDir}
+func New(c *content.Store, notes *store.Notes, m *mapping.Store, g *git.Repo, publicDir string) *Server {
+	return &Server{store: c, notes: notes, mapping: m, git: g, publicDir: publicDir}
 }
 
 func (s *Server) Routes() *http.ServeMux {
@@ -63,6 +65,47 @@ func (s *Server) wrap(collection string, r content.Resource) resource {
 	return resource{Collection: collection, Resource: r, State: "promoted", Notes: s.notes.Get(collection, r.Slug)}
 }
 
+// stagedSet is the set of repo-relative paths with unpublished (staged) changes,
+// or nil when git is disabled.
+func (s *Server) stagedSet() map[string]bool {
+	if s.git == nil {
+		return nil
+	}
+	set, err := s.git.StagedPaths()
+	if err != nil {
+		return nil
+	}
+	return set
+}
+
+// applyState sets a resource's staging-axis state from the staged path set.
+// With git disabled, everything is "promoted" (a save lands directly).
+func (s *Server) applyState(collection string, res *resource, staged map[string]bool) {
+	if s.git == nil {
+		res.State = "promoted"
+		return
+	}
+	rel, err := s.store.RelPath(collection, res.Slug)
+	if err != nil {
+		return
+	}
+	if staged[rel] {
+		res.State = "staged"
+	} else {
+		res.State = "promoted"
+	}
+}
+
+// commit lands an edit/delete/rename on the staging branch. paths are
+// repo-relative; key is the resource identity used for squashing a session's
+// successive saves into one commit. No-op when git is disabled.
+func (s *Server) commit(collection, slug, summary string, paths ...string) error {
+	if s.git == nil {
+		return nil
+	}
+	return s.git.Commit(collection+"/"+slug, paths, summary)
+}
+
 func (s *Server) getSchema(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, s.store.Schema())
 }
@@ -96,9 +139,11 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	staged := s.stagedSet()
 	out := make([]resource, len(rs))
 	for i, res := range rs {
 		out[i] = s.wrap(c, res)
+		s.applyState(c, &out[i], staged)
 	}
 	writeJSON(w, out)
 }
@@ -129,12 +174,21 @@ func (s *Server) save(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	saved, err := s.store.Read(c, in.Resource.Slug)
+	slug := in.Resource.Slug
+	if rel, err := s.store.RelPath(c, slug); err == nil {
+		if err := s.commit(c, slug, "edit "+c+"/"+slug, rel); err != nil {
+			fail(w, err)
+			return
+		}
+	}
+	saved, err := s.store.Read(c, slug)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	writeJSON(w, s.wrap(c, *saved))
+	res := s.wrap(c, *saved)
+	s.applyState(c, &res, s.stagedSet())
+	writeJSON(w, res)
 }
 
 func (s *Server) del(w http.ResponseWriter, r *http.Request) {
@@ -144,6 +198,12 @@ func (s *Server) del(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.notes.Delete(c, slug)
+	if rel, err := s.store.RelPath(c, slug); err == nil {
+		if err := s.commit(c, slug, "delete "+c+"/"+slug, rel); err != nil {
+			fail(w, err)
+			return
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -170,19 +230,41 @@ func (s *Server) rename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.notes.Move(c, from, to)
+	fromRel, errF := s.store.RelPath(c, from)
+	toRel, errT := s.store.RelPath(c, to)
+	if errF == nil && errT == nil {
+		if err := s.commit(c, to, "rename "+c+"/"+from+" -> "+to, fromRel, toRel); err != nil {
+			fail(w, err)
+			return
+		}
+	}
 	writeJSON(w, map[string]string{"slug": to})
 }
 
 func (s *Server) promote(w http.ResponseWriter, r *http.Request) {
-	// Staging/promote needs git; until then a save already lands in the working
-	// tree, so promote echoes the current resource.
+	// Promote brings this resource's staged version onto the main branch. With
+	// git disabled a save already lands in the working tree, so promote is a
+	// no-op echo.
 	c, slug := r.PathValue("collection"), r.PathValue("slug")
+	if s.git != nil {
+		rel, err := s.store.RelPath(c, slug)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		if err := s.git.Promote([]string{rel}, "promote "+c+"/"+slug); err != nil {
+			fail(w, err)
+			return
+		}
+	}
 	saved, err := s.store.Read(c, slug)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	writeJSON(w, s.wrap(c, *saved))
+	res := s.wrap(c, *saved)
+	s.applyState(c, &res, s.stagedSet())
+	writeJSON(w, res)
 }
 
 func (s *Server) serialized(w http.ResponseWriter, r *http.Request) {

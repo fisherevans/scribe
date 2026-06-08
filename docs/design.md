@@ -93,15 +93,29 @@ in the blog repo; its working tree is checked out on `staging`. Changes move
 between `staging` and `main`:
 
 - **Save -> staging.** Write the file into the working tree and commit to
-  `staging`. Commit granularity is per-save (debounced); WIP/noisy commits on
-  `staging` are fine. This is also the durability mechanism (see backup below).
-- **Promote -> production.** Merge `staging` into `main` and push `main`, which
-  triggers the existing Astro deploy. If `main` moved underneath (edited on
-  GitHub or via Pages CMS), the merge reconciles it; clean merges auto-apply,
-  conflicts drop into a manual-resolve flow. Squash the merge for clean `main`
-  history, then fast-forward `staging` to `main` so the branches don't diverge.
-  Everything is markdown/YAML, so manual merges are tolerable, and conflicts
-  should be rare with a single writer.
+  `staging`. Consecutive saves of the *same* resource are squashed (amended)
+  into one commit, so a writing session is one commit per resource rather than
+  one-per-debounced-save. This is also the durability mechanism (see backup
+  below).
+- **Promote -> production.** Promotion is *per-resource*: scribe brings that one
+  file's `staging` version onto `main` and commits it there (it does not merge
+  the whole `staging` branch). This matches the per-resource promote control in
+  the UI - stage many drafts, publish them individually. Pushing `main` triggers
+  the downstream render/publish pipeline. Deletes promote too (the file is
+  removed from `main`).
+
+> Implemented in `internal/git` (shelling out to the `git` CLI), wired through
+> `internal/api`. scribe sits on `staging` at all times; promote briefly checks
+> out `main` and returns. Pushing to `origin` is gated behind `--push`
+> (default off) so local dev doesn't touch the remote. Rendering and publishing
+> are a separate downstream pipeline - scribe's responsibility ends at the
+> commit.
+
+The earlier whole-branch-merge model (squash-merge `staging`->`main`, then
+fast-forward `staging`) was dropped in favor of per-resource promotion. If
+`main` is edited independently (GitHub / Pages CMS), per-resource promote
+overwrites that file on `main` with the staging version rather than reconciling
+- acceptable while scribe is effectively the single writer.
 
 `origin` push of `staging` is always a fast-forward (scribe is the sole writer
 of that branch). Only the `staging -> main` merge can conflict, and only when

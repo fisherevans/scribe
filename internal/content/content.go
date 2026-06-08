@@ -52,6 +52,17 @@ func (s *Store) path(c *schema.Collection, slug string) string {
 	return filepath.Join(s.dir(c), slug+c.Ext)
 }
 
+// RelPath is the resource's path relative to the repo root (what git operates
+// on), e.g. "src/content/posts/calsync.md". It's a pure schema computation and
+// doesn't require the file to exist.
+func (s *Store) RelPath(collection, slug string) (string, error) {
+	c, err := s.collection(collection)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(c.Path, slug+c.Ext), nil
+}
+
 // ---- read ---------------------------------------------------------------
 
 func (s *Store) List(name string) ([]Resource, error) {
