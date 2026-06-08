@@ -32,7 +32,7 @@ export function ReferencePicker({ target, value, onChange, onOpen }: Props) {
     }
 
     return (
-        <div className="field">
+        <div className="field refpicker">
             <div className="chips">
                 {value.map((slug) => (
                     <span key={slug} className="chip">

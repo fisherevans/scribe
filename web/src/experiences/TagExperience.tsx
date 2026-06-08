@@ -4,6 +4,7 @@ import { fstr } from '../types'
 import { slugify } from '../slug'
 import { ContentEditor } from '../editor/ContentEditor'
 import { Editor } from '../editor/Editor'
+import { AutoTextarea } from '../components/AutoTextarea'
 
 // Tags: name + description edit live (they touch no references). The slug is a
 // reference target, so renaming it goes through an explicit edit -> apply step
@@ -37,12 +38,11 @@ export function TagExperience({ resource, def, map, onPatch, onRename, onDelete 
                     onBody={(md) => onPatch({ body: md })}
                     meta={
                         <div className="docmeta docmeta--edit">
-                            <textarea
+                            <AutoTextarea
                                 className="docmeta__desc"
-                                rows={2}
                                 value={fstr(resource, descField)}
                                 placeholder="Description — one-liner for listings"
-                                onChange={(e) => onPatch({ fields: { [descField]: e.target.value } })}
+                                onChange={(v) => onPatch({ fields: { [descField]: v } })}
                             />
                         </div>
                     }

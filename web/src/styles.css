@@ -332,17 +332,35 @@ button { font-family: inherit; cursor: pointer; }
     transition: border-color 0.15s, color 0.15s;
 }
 .page__edit:hover { color: var(--ink); border-color: var(--brass-deep); }
+/* Inline title-edit pencil: a trailing character glued to the last word (the
+   nowrap tail) so it never wraps to a line by itself. */
+.page__title-tail { white-space: nowrap; }
+.page__edit-pencil {
+    margin-left: 0.3em;
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 0.42em;
+    line-height: 1;
+    vertical-align: 0.35em;
+    color: var(--ink-faintest);
+    transition: color 0.15s;
+}
+.page__edit-pencil:hover { color: var(--brass-deep); }
 
 /* Inline document metadata (date / description / tags) between title and body. */
-.docmeta { margin: 0 0 1.6rem; }
-.docmeta--view .docmeta__byline { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.06em; color: var(--ink-faintest); margin-bottom: 0.5rem; }
+.docmeta { margin: 0 0 0.9rem; }
+.docmeta--view .docmeta__byline { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.06em; color: var(--ink-faintest); margin-bottom: 0.4rem; }
 .docmeta--view .docmeta__lede { font-family: var(--serif-body); font-style: italic; font-size: 1.18rem; line-height: 1.5; color: var(--ink-soft); margin: 0; }
-.docmeta--edit { display: flex; flex-direction: column; gap: 0.7rem; padding: 0.2rem 0 1.1rem; border-bottom: 1px solid var(--paper-line); }
-.docmeta__field { display: flex; align-items: center; gap: 0.6rem; }
+.docmeta--edit { display: flex; flex-direction: column; gap: 0.5rem; padding: 0 0 0.7rem; border-bottom: 1px solid var(--paper-line); }
+.docmeta__row { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; }
+.docmeta__field { display: flex; align-items: center; gap: 0.5rem; flex: none; }
 .docmeta__lbl { font-family: var(--mono); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-soft); }
 .docmeta__date { font-family: var(--mono); font-size: 0.82rem; color: var(--ink); background: var(--paper-2); border: 1px solid var(--paper-line); border-radius: 0.4rem; padding: 0.3rem 0.5rem; color-scheme: light; outline: none; }
 .docmeta__date:focus { border-color: var(--brass); }
-.docmeta__desc { width: 100%; font-family: var(--serif-body); font-style: italic; font-size: 1.12rem; line-height: 1.45; color: var(--ink); background: transparent; border: none; border-left: 2px solid var(--paper-line); padding: 0.05rem 0 0.05rem 0.8rem; outline: none; resize: vertical; }
+.docmeta__tags { flex: 1 1 12rem; min-width: 0; }
+.docmeta__desc { display: block; width: 100%; font-family: var(--serif-body); font-style: italic; font-size: 1.12rem; line-height: 1.45; color: var(--ink); background: transparent; border: none; border-left: 2px solid var(--paper-line); padding: 0.05rem 0 0.05rem 0.8rem; outline: none; resize: none; overflow: hidden; }
 .docmeta__desc:focus { border-left-color: var(--brass); }
 .docmeta__desc::placeholder { color: var(--ink-faintest); }
 /* ReferencePicker reads on parchment here, not the dark desk. */
@@ -350,7 +368,7 @@ button { font-family: inherit; cursor: pointer; }
 .docmeta__tags .chips__input { color: var(--ink); }
 .docmeta__tags .chip { background: var(--brass-soft); color: var(--ink); }
 .docmeta__tags .chip__label { color: var(--ink); }
-.docmeta__tags .suggest { background: var(--paper-2); border-color: var(--paper-line); }
+.docmeta__tags .suggest { background: var(--paper-2); border-color: var(--paper-line); box-shadow: 0 12px 28px -12px rgba(0, 0, 0, 0.45); }
 .docmeta__tags .suggest__item { background: var(--paper); color: var(--ink-mute); border-color: var(--paper-line); }
 .docmeta__tags .suggest__item:hover { color: var(--ink); border-color: var(--brass-deep); }
 
@@ -899,8 +917,15 @@ button.chip__label:hover { text-decoration: underline; }
 .chip__x { background: none; border: none; padding: 0; margin: 0; line-height: 1; color: var(--ink-faint); font-size: 0.62rem; cursor: pointer; }
 .chip__x:hover { color: var(--rose); }
 .chips__input { flex: 1; min-width: 5rem; background: none; border: none; outline: none; color: var(--ink-on-desk); font-family: var(--mono); font-size: 0.78rem; padding: 0.15rem; }
+/* Suggestions float over the content as a popover so typing a tag never
+   reflows the page being edited. */
+.refpicker { position: relative; }
 .suggest {
-    margin-top: 0.35rem;
+    position: absolute;
+    top: calc(100% + 0.3rem);
+    left: 0;
+    right: 0;
+    z-index: 60;
     background: var(--desk-3);
     border: 1px solid var(--desk-line);
     border-radius: 0.5rem;
@@ -908,6 +933,7 @@ button.chip__label:hover { text-decoration: underline; }
     display: flex;
     flex-wrap: wrap;
     gap: 0.25rem;
+    box-shadow: 0 12px 28px -12px rgba(0, 0, 0, 0.6);
 }
 .suggest__item {
     font-family: var(--mono);

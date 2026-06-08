@@ -19,12 +19,9 @@ export function Editor({ slug, title, body, editable, onEditTitle, onBody, empty
     return (
         <article className="page">
             <header className="page__head">
-                <h1 className={'page__title-display' + (title ? '' : ' is-empty')}>{title || emptyTitle}</h1>
-                {editable && onEditTitle && (
-                    <button className="page__edit" type="button" onClick={onEditTitle} title="edit title & slug">
-                        ✎ title
-                    </button>
-                )}
+                <h1 className={'page__title-display' + (title ? '' : ' is-empty')}>
+                    <TitleText text={title || emptyTitle} pencil={editable && !!onEditTitle} onEditTitle={onEditTitle} />
+                </h1>
             </header>
             {meta}
             <ContentEditor docKey={slug} body={body} editable={editable} onBody={onBody} onWords={setWords} />
@@ -32,5 +29,24 @@ export function Editor({ slug, title, body, editable, onEditTitle, onBody, empty
                 {words} {words === 1 ? 'word' : 'words'} · {Math.max(1, Math.round(words / 220))} min read
             </footer>
         </article>
+    )
+}
+
+// Title text with an optional trailing pencil. The last word and the pencil are
+// kept on one line (a nowrap span) so the icon never wraps to a line by itself
+// when the title wraps.
+function TitleText({ text, pencil, onEditTitle }: { text: string; pencil: boolean; onEditTitle?: () => void }) {
+    if (!pencil) return <>{text}</>
+    const words = text.split(' ')
+    const last = words[words.length - 1]
+    const head = words.slice(0, -1).join(' ')
+    return (
+        <>
+            {head && head + ' '}
+            <span className="page__title-tail">
+                {last}
+                <button className="page__edit-pencil" type="button" onClick={onEditTitle} title="edit title & slug" aria-label="edit title & slug">✎</button>
+            </span>
+        </>
     )
 }
