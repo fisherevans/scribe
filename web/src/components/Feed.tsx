@@ -19,10 +19,14 @@ export function Feed({ view, items, activeSlug, allTags, onSelect, onNew }: Prop
     const isPosts = view.name === 'posts'
     const [sort, setSort] = useState<Sort>(isPosts ? 'newest' : 'title')
     const [tagFilter, setTagFilter] = useState<string>('all')
+    const [searchOpen, setSearchOpen] = useState(false)
+    const [query, setQuery] = useState('')
 
     const shown = useMemo(() => {
         let list = items.slice()
         if (isPosts && tagFilter !== 'all') list = list.filter((r) => flist(r, 'tags').includes(tagFilter))
+        const q = query.trim().toLowerCase()
+        if (q) list = list.filter((r) => view.feedTitle(r).toLowerCase().includes(q) || r.slug.toLowerCase().includes(q))
         const date = (r: Resource) => fstr(r, 'date')
         const title = (r: Resource) => view.feedTitle(r).toLowerCase()
         switch (sort) {
@@ -32,7 +36,7 @@ export function Feed({ view, items, activeSlug, allTags, onSelect, onNew }: Prop
             case 'draftsFirst': list.sort((a, b) => (fbool(a, 'draft') ? 0 : 1) - (fbool(b, 'draft') ? 0 : 1) || date(b).localeCompare(date(a))); break
         }
         return list
-    }, [items, sort, tagFilter, isPosts, view])
+    }, [items, sort, tagFilter, query, isPosts, view])
 
     return (
         <nav className="feed">
@@ -54,8 +58,29 @@ export function Feed({ view, items, activeSlug, allTags, onSelect, onNew }: Prop
                         {allTags.map((t) => <option key={t} value={t}>#{t}</option>)}
                     </select>
                 )}
+                <button
+                    type="button"
+                    className={'ctrl ctrl--icon' + (searchOpen || query ? ' is-active' : '')}
+                    onClick={() => { setSearchOpen((o) => !o); if (searchOpen) setQuery('') }}
+                    title="filter by title"
+                    aria-label="filter by title"
+                >⌕</button>
                 <span className="feed__count">{shown.length}</span>
             </div>
+
+            {searchOpen && (
+                <div className="feed__search">
+                    <input
+                        className="feed__searchinput"
+                        autoFocus
+                        value={query}
+                        placeholder="filter by title…"
+                        onChange={(e) => setQuery(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Escape') { setQuery(''); setSearchOpen(false) } }}
+                    />
+                    {query && <button type="button" className="feed__searchclear" onClick={() => setQuery('')} aria-label="clear">✕</button>}
+                </div>
+            )}
 
             <ul className="feed__list">
                 {shown.map((r, i) => {

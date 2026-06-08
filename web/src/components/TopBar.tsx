@@ -25,28 +25,31 @@ const STATUS_LABEL: Record<SaveStatus, string> = {
     edited: 'unsaved',
 }
 
+// Deliberately sparse: the page is the primary thing. The bar shows only the
+// save status (when not idle), the edit toggle, a publish CTA when there's
+// something staged, and an overflow for the occasional actions (details, live).
 export function TopBar({ resource, showDetails, showEdit, editMode, status, stagedCount, publishing, liveUrl, onMenu, onToggleEdit, onDetails, onPublish }: Props) {
     const [menuOpen, setMenuOpen] = useState(false)
-    // Secondary-action handlers also close the overflow menu (mobile).
-    const close = (fn: () => void) => () => {
-        setMenuOpen(false)
-        fn()
-    }
+    const close = (fn: () => void) => () => { setMenuOpen(false); fn() }
+    const hasOverflow = showDetails || !!liveUrl
 
     return (
         <header className="topbar">
-            <button className="topbar__menu" onClick={onMenu} type="button" aria-label="browse">
-                ≡
-            </button>
+            <button className="topbar__menu" onClick={onMenu} type="button" aria-label="browse">≡</button>
             <div className="topbar__status">
-                {showEdit && !editMode && <span className="viewbadge">viewing</span>}
-                <span className={'status status--' + status}>{STATUS_LABEL[status]}</span>
+                {status !== 'idle' && <span className={'status status--' + status}>{STATUS_LABEL[status]}</span>}
             </div>
 
             <div className="topbar__actions">
+                {stagedCount > 0 && (
+                    <button className="btn btn--promote" onClick={onPublish} type="button" disabled={publishing} title="review & publish staged changes">
+                        {publishing ? 'publishing…' : `↑ publish ${stagedCount}`}
+                    </button>
+                )}
+
                 {showEdit && (
                     <button
-                        className={'btn ' + (editMode ? 'btn--promote' : 'btn--ghost')}
+                        className={'btn ' + (editMode ? 'btn--active' : 'btn--ghost')}
                         onClick={onToggleEdit}
                         type="button"
                         disabled={!resource}
@@ -56,32 +59,25 @@ export function TopBar({ resource, showDetails, showEdit, editMode, status, stag
                     </button>
                 )}
 
-                <div className="topbar__more">
-                    <button
-                        className={'btn btn--ghost topbar__overflow' + (menuOpen ? ' is-active' : '')}
-                        onClick={() => setMenuOpen((o) => !o)}
-                        type="button"
-                        aria-label="more actions"
-                    >
-                        ⋯
-                    </button>
-                    {menuOpen && <div className="topbar__scrim" onClick={() => setMenuOpen(false)} />}
-                    <div className={'topbar__secondary' + (menuOpen ? ' is-open' : '')}>
-                        {showDetails && (
-                            <button className="btn btn--ghost" onClick={close(onDetails)} type="button" disabled={!resource}>
-                                details
-                            </button>
-                        )}
-                        {liveUrl && (
-                            <a className="btn btn--ghost topbar__link" href={liveUrl} target="_blank" rel="noreferrer" onClick={() => setMenuOpen(false)}>
-                                view live ↗
-                            </a>
-                        )}
-                        <button className="btn btn--promote" onClick={close(onPublish)} type="button" disabled={stagedCount === 0 || publishing}>
-                            {publishing ? 'publishing…' : stagedCount > 0 ? `↑ publish ${stagedCount}` : 'published'}
-                        </button>
+                {hasOverflow && (
+                    <div className="topbar__more">
+                        <button
+                            className={'btn btn--ghost topbar__overflow' + (menuOpen ? ' is-active' : '')}
+                            onClick={() => setMenuOpen((o) => !o)}
+                            type="button"
+                            aria-label="more actions"
+                        >⋯</button>
+                        {menuOpen && <div className="topbar__scrim" onClick={() => setMenuOpen(false)} />}
+                        <div className={'topbar__secondary' + (menuOpen ? ' is-open' : '')}>
+                            {showDetails && (
+                                <button className="btn btn--ghost" onClick={close(onDetails)} type="button" disabled={!resource}>details</button>
+                            )}
+                            {liveUrl && (
+                                <a className="btn btn--ghost topbar__link" href={liveUrl} target="_blank" rel="noreferrer" onClick={() => setMenuOpen(false)}>view live ↗</a>
+                            )}
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
         </header>
     )

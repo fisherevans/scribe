@@ -237,12 +237,31 @@ button { font-family: inherit; cursor: pointer; }
 .status--saved { color: var(--sage); }
 .status--edited { color: var(--rose); }
 .topbar__actions { display: flex; align-items: center; gap: 0.5rem; }
-/* Desktop: secondary actions flow inline; the overflow button is hidden. */
-.topbar__more { display: contents; }
-.topbar__secondary { display: flex; align-items: center; gap: 0.5rem; }
-.topbar__overflow { display: none; }
-.topbar__scrim { display: none; }
-.topbar__label { display: none; } /* desktop shows the icon only */
+/* Secondary actions (details, view live) always live behind the ⋯ overflow, on
+   every width, so the bar stays minimal and the page is the focus. */
+.topbar__more { display: block; position: relative; }
+.topbar__overflow { display: inline-grid; place-items: center; }
+.topbar__secondary {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    right: 0;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.15rem;
+    background: var(--desk-2);
+    border: 1px solid var(--desk-line);
+    border-radius: 0.6rem;
+    padding: 0.3rem;
+    min-width: 10rem;
+    box-shadow: 0 16px 36px -14px rgba(0, 0, 0, 0.7);
+    z-index: 95;
+}
+.topbar__secondary.is-open { display: flex; }
+.topbar__secondary .btn { justify-content: flex-start; width: 100%; border-color: transparent; }
+.topbar__secondary .btn:hover:not(:disabled) { border-color: var(--desk-line); }
+.topbar__scrim { display: block; position: fixed; inset: 0; z-index: 90; }
+.topbar__label { display: none; }
 .topbar__ico { display: inline; }
 .btn {
     font-family: var(--mono);
@@ -261,6 +280,9 @@ button { font-family: inherit; cursor: pointer; }
 .btn--danger:hover:not(:disabled) { color: var(--rose); border-color: rgba(192, 125, 84, 0.5); }
 .btn--promote { background: var(--brass); border-color: var(--brass); color: #221808; font-weight: 500; }
 .btn--promote:hover:not(:disabled) { background: #d49a48; border-color: #d49a48; color: #221808; }
+/* Edit-mode toggle when engaged: clearly "on" but not the brass publish CTA. */
+.btn--active { background: var(--desk-3); border-color: var(--brass-deep); color: var(--ink-on-desk); }
+.btn--active:hover:not(:disabled) { border-color: var(--brass); color: var(--ink); }
 
 /* ---- The page (parchment document) ------------------------------------- */
 .page {
@@ -700,11 +722,27 @@ body.is-readonly .drag-handle { display: none !important; }
     font-size: 1.02rem;
     color: var(--ink);
     outline: none;
-    resize: vertical;
+    resize: none;
     transition: border-color 0.15s;
 }
 .ffield__input:focus { border-color: var(--brass); }
 .ffield__input--lg { font-family: var(--serif-display); font-size: 1.5rem; font-weight: 520; }
+/* Only genuinely multi-line fields get a (vertical-only) resize grip. */
+.ffield__input--area { resize: vertical; min-height: 4.75rem; }
+textarea.field__input { resize: vertical; }
+
+/* Tag slug: explicit edit-then-apply (renaming cascades to referencing posts). */
+.slugview { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.slugview__val { font-family: var(--mono); font-size: 0.9rem; color: var(--ink); background: var(--paper-2); border: 1px solid var(--paper-line); border-radius: 0.4rem; padding: 0.4rem 0.6rem; }
+.slugedit { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.slugedit .ffield__input { flex: 1 1 12rem; }
+.slugedit .btn { flex: none; }
+
+/* Tag page-content editor: a parchment box; extra left padding is the gutter the
+   block drag handle sits in (so it's reachable, like the post body). */
+.tagbody { background: var(--paper); border: 1px solid var(--paper-line); border-radius: 0.6rem; padding: 0.85rem 1rem 0.85rem 1.85rem; }
+.tagbody .prose { font-size: 1.05rem; line-height: 1.6; }
+.tagbody .prose:focus { outline: none; }
 /* FieldWidget inside a parchment formcard: make .field__input read on paper. */
 .formcard .field__input { background: var(--paper); border: 1px solid var(--paper-line); border-radius: 0.45rem; padding: 0.6rem 0.7rem; font-family: var(--serif-body); font-size: 1.02rem; color: var(--ink); outline: none; width: 100%; }
 .formcard .field__input:focus { border-color: var(--brass); }
@@ -966,7 +1004,19 @@ button.chip__label:hover { text-decoration: underline; }
     outline: none;
 }
 .ctrl:focus { border-color: var(--brass-deep); }
+.ctrl--icon { flex: 0 0 auto; cursor: pointer; font-size: 0.9rem; line-height: 1; padding: 0.28rem 0.45rem; }
+.ctrl--icon:hover { color: var(--ink); border-color: var(--brass-deep); }
+.ctrl--icon.is-active { color: #221808; background: var(--brass); border-color: var(--brass); }
 .feed__count { margin-left: auto; font-family: var(--mono); font-size: 0.66rem; color: var(--ink-faint); }
+.feed__search { display: flex; align-items: center; gap: 0.4rem; padding: 0 0.5rem 0.7rem; }
+.feed__searchinput {
+    flex: 1; min-width: 0;
+    font-family: var(--mono); font-size: 0.74rem; color: var(--ink-on-desk);
+    background: var(--desk); border: 1px solid var(--brass-deep);
+    border-radius: 0.4rem; padding: 0.34rem 0.5rem; outline: none;
+}
+.feed__searchclear { flex: none; background: none; border: none; color: var(--ink-faint); cursor: pointer; font-size: 0.7rem; padding: 0.2rem; }
+.feed__searchclear:hover { color: var(--rose); }
 
 /* ---- Rail resizer ------------------------------------------------------- */
 .resizer { flex: none; width: 6px; margin-left: -3px; cursor: col-resize; background: transparent; transition: background 0.15s; z-index: 5; }
@@ -1004,32 +1054,9 @@ button.chip__label:hover { text-decoration: underline; }
     .app__canvas { padding: 0.8rem 0.6rem 4rem; }
     .page { border-radius: 0.3rem; min-height: 40vh; padding-bottom: 3rem; }
 
-    /* Top bar: collapse secondary actions into an overflow menu. */
+    /* The ⋯ overflow is the default everywhere (see base rules); mobile just
+       tightens the bar spacing. */
     .topbar { gap: 0.5rem; padding: 0.6rem 0.8rem; }
-    .topbar__more { display: block; position: relative; }
-    .topbar__overflow { display: inline-grid; place-items: center; }
-    .topbar__secondary {
-        position: absolute;
-        top: calc(100% + 0.4rem);
-        right: 0;
-        flex-direction: column;
-        align-items: stretch;
-        gap: 0.15rem;
-        background: var(--desk-2);
-        border: 1px solid var(--desk-line);
-        border-radius: 0.6rem;
-        padding: 0.3rem;
-        min-width: 10rem;
-        box-shadow: 0 16px 36px -14px rgba(0, 0, 0, 0.7);
-        z-index: 95;
-        display: none;
-    }
-    .topbar__secondary.is-open { display: flex; }
-    .topbar__secondary .btn { justify-content: flex-start; width: 100%; border-color: transparent; }
-    .topbar__secondary .btn:hover:not(:disabled), .topbar__secondary .btn--promote { border-color: var(--desk-line); }
-    .topbar__label { display: inline; }
-    .topbar__ico { display: inline-block; width: 1.3rem; text-align: center; }
-    .topbar__scrim { display: block; position: fixed; inset: 0; z-index: 90; }
 }
 .ffield__hint { font-family: var(--mono); font-size: 0.6rem; text-transform: none; letter-spacing: 0; color: var(--ink-faint); margin-left: 0.5rem; }
 

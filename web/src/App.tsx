@@ -79,6 +79,11 @@ export default function App() {
     const tagItems = lists['tags'] ?? []
     const allTags = tagItems.map((t) => t.slug)
 
+    // Browser tab title reflects what you're editing, so history/back is legible.
+    const kindOf = (v: CollectionView) => (v.experience === 'blog-post' ? 'post' : v.experience === 'tag' ? 'tag' : v.label)
+    const docTitle = view && active ? `${view.feedTitle(active)} · ${kindOf(view)} · scribe` : view ? `${view.label} · scribe` : 'scribe'
+    useEffect(() => { document.title = docTitle }, [docTitle])
+
     // Read-only data access for the reference picker etc.
     const dataApi = useMemo<DataApi>(() => ({
         list: (c) => lists[c] ?? [],
@@ -109,7 +114,10 @@ export default function App() {
         localStorage.setItem('scribe-setup-seen', '1')
         setSetupOpen(false)
     }, [])
-    useEffect(() => { document.body.classList.toggle('is-readonly', !editMode) }, [editMode])
+    // Read-only (hides block drag handles etc.) applies to the post writing
+    // surface in view mode. Form experiences (tag, generic) are always editable.
+    const formExp = view ? view.experience !== 'blog-post' : false
+    useEffect(() => { document.body.classList.toggle('is-readonly', !editMode && !formExp) }, [editMode, formExp])
     useEffect(() => { document.documentElement.style.setProperty('--rail-w', railW.current + 'rem') }, [])
 
     // Visual-viewport height (iOS keyboard).
