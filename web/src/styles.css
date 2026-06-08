@@ -269,16 +269,17 @@ button { font-family: inherit; cursor: pointer; }
     background: linear-gradient(180deg, var(--paper), var(--paper-2));
     color: var(--ink);
     border-radius: 0.4rem;
-    padding: clamp(2rem, 5vw, 4.5rem) clamp(1.4rem, 5vw, 4rem) 6rem;
+    padding: clamp(2rem, 5vw, 4.5rem) clamp(1.6rem, 5vw, 4rem) 6rem;
     box-shadow:
         0 1px 0 rgba(255, 255, 255, 0.5) inset,
         0 30px 60px -28px rgba(0, 0, 0, 0.6),
         0 2px 8px rgba(0, 0, 0, 0.3);
     min-height: 70vh;
 }
-.page__head { display: flex; align-items: flex-start; gap: 1rem; margin-bottom: 0.6rem; }
+/* Positioning context for the floating edit button. It's a *sibling* of the
+   body, not an ancestor, so it doesn't disturb the drag handle's offset parent. */
+.page__head { position: relative; margin-bottom: 0.6rem; }
 .page__title-display {
-    flex: 1;
     margin: 0;
     color: var(--ink);
     font-family: var(--serif-display);
@@ -290,8 +291,14 @@ button { font-family: inherit; cursor: pointer; }
 }
 .page__title-display.is-empty { color: var(--ink-faintest); font-style: italic; }
 .page__edit {
-    flex: none;
-    margin-top: 0.5rem;
+    /* Floats in the right gutter, outside the content column, so toggling edit
+       mode never changes the title's available width or makes it reflow. The
+       right offset places it just inside the page's right edge at any width
+       (no horizontal overflow). */
+    position: absolute;
+    top: 0.4rem;
+    right: calc(0.4rem - clamp(1.6rem, 5vw, 4rem));
+    z-index: 6;
     font-family: var(--mono);
     font-size: 0.68rem;
     letter-spacing: 0.04em;
@@ -303,6 +310,13 @@ button { font-family: inherit; cursor: pointer; }
     transition: border-color 0.15s, color 0.15s;
 }
 .page__edit:hover { color: var(--ink); border-color: var(--brass-deep); }
+
+/* The drag handle is a child of .page__body, positioned in the left gutter, and
+   the extension hides it on mouseout of .page__body. padding-left + equal
+   negative margin-left extend that element's box left into the gutter WITHOUT
+   moving the text (padding cancels the margin), so the cursor stays "inside"
+   the body while reaching the handle and it no longer vanishes. */
+.page__body { padding-left: 1.6rem; margin-left: -1.6rem; }
 
 /* ---- Prose (the body) --------------------------------------------------- */
 .prose { outline: none; font-size: var(--prose-size, 1.2rem); line-height: var(--prose-leading, 1.72); color: var(--ink); }
