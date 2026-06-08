@@ -21,6 +21,7 @@ export interface FieldDef {
     type: string // string, text, rich-text, date, boolean, image, number, select, object, code
     required: boolean
     list: boolean
+    options?: string[] // for select fields
 }
 export interface CollectionDef {
     name: string

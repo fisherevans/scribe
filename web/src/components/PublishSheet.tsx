@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { CollectionDef, Resource } from '../types'
 import { fbool, flist, fstr } from '../types'
 import type { ResourcePatch } from '../collections'
+import { RawFields } from './RawFields'
 import { slugify } from '../slug'
 
 interface Props {
@@ -24,7 +25,6 @@ export function PublishSheet({ resource, map, def, allTags, open, onClose, onPat
     const [tagDraft, setTagDraft] = useState('')
     const [tagFocus, setTagFocus] = useState(false)
     const [slugDraft, setSlugDraft] = useState('')
-    const [showAdvanced, setShowAdvanced] = useState(false)
     useEffect(() => setSlugDraft(resource?.slug ?? ''), [resource?.slug])
 
     const tagsField = map.tags
@@ -34,11 +34,7 @@ export function PublishSheet({ resource, map, def, allTags, open, onClose, onPat
         return allTags.filter((t) => !tags.includes(t) && (q === '' || t.toLowerCase().includes(q))).slice(0, 8)
     }, [allTags, tags, tagDraft])
 
-    // Fields the experience doesn't map -> the raw bucket.
-    const advanced = useMemo(() => {
-        const mapped = new Set(Object.values(map))
-        return def.fields.filter((f) => !mapped.has(f.name))
-    }, [def, map])
+    const covered = useMemo(() => new Set(Object.values(map)), [map])
 
     if (!resource) return null
     const r = resource
@@ -117,31 +113,7 @@ export function PublishSheet({ resource, map, def, allTags, open, onClose, onPat
                             </label>
                         )}
 
-                        {advanced.length > 0 && (
-                            <div className="field">
-                                <button className="advanced__toggle" type="button" onClick={() => setShowAdvanced((a) => !a)}>
-                                    {showAdvanced ? '▾' : '▸'} additional fields <span className="advanced__count">{advanced.length}</span>
-                                </button>
-                                {showAdvanced && (
-                                    <div className="advanced">
-                                        {advanced.map((f) => (
-                                            <div key={f.name} className="field">
-                                                <span className="field__label">{f.label}</span>
-                                                {f.list ? (
-                                                    <input className="field__input field__input--mono" value={flist(r, f.name).join(', ')} placeholder="comma, separated" onChange={(e) => setField(f.name, e.target.value.split(',').map((s) => s.trim()).filter(Boolean))} />
-                                                ) : f.type === 'boolean' ? (
-                                                    <label className="toggle"><input type="checkbox" checked={fbool(r, f.name)} onChange={(e) => setField(f.name, e.target.checked)} /><span className="toggle__track" /></label>
-                                                ) : f.type === 'text' || f.type === 'rich-text' || f.type === 'code' ? (
-                                                    <textarea className="field__input" rows={3} value={fstr(r, f.name)} onChange={(e) => setField(f.name, e.target.value)} />
-                                                ) : (
-                                                    <input className="field__input" type={f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'} value={fstr(r, f.name)} onChange={(e) => setField(f.name, f.type === 'number' ? Number(e.target.value) : e.target.value)} />
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
+                        <RawFields resource={r} def={def} covered={covered} onPatch={onPatch} />
 
                         <label className="field field--notes">
                             <span className="field__label">notes <span className="field__private">private · never committed</span></span>
