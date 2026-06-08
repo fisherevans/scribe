@@ -4,13 +4,14 @@ import type { CollectionDef, Resource } from '../types'
 import { fbool, flist, fstr } from '../types'
 import type { ResourcePatch } from '../collections'
 import { RawFields } from './RawFields'
+import { ReferencePicker } from './ReferencePicker'
 import { slugify } from '../slug'
 
 interface Props {
     resource: Resource | null
     map: Record<string, string> // role -> field
+    references: Record<string, string> // reference role -> target collection
     def: CollectionDef
-    allTags: string[]
     open: boolean
     onClose: () => void
     onPatch: (patch: ResourcePatch) => void
@@ -21,30 +22,15 @@ interface Props {
 // Details = the deferred metadata for a post. Mapped optional roles render at
 // top; everything the experience doesn't cover (unmapped schema fields) is
 // preserved and editable under "additional fields" (hidden by default).
-export function PublishSheet({ resource, map, def, allTags, open, onClose, onPatch, onRename, onDelete }: Props) {
-    const [tagDraft, setTagDraft] = useState('')
-    const [tagFocus, setTagFocus] = useState(false)
+export function PublishSheet({ resource, map, references, def, open, onClose, onPatch, onRename, onDelete }: Props) {
     const [slugDraft, setSlugDraft] = useState('')
     useEffect(() => setSlugDraft(resource?.slug ?? ''), [resource?.slug])
-
-    const tagsField = map.tags
-    const tags = resource && tagsField ? flist(resource, tagsField) : []
-    const suggestions = useMemo(() => {
-        const q = tagDraft.trim().toLowerCase()
-        return allTags.filter((t) => !tags.includes(t) && (q === '' || t.toLowerCase().includes(q))).slice(0, 8)
-    }, [allTags, tags, tagDraft])
 
     const covered = useMemo(() => new Set(Object.values(map)), [map])
 
     if (!resource) return null
     const r = resource
     const setField = (k: string, v: unknown) => onPatch({ fields: { [k]: v } })
-    const addTag = (raw: string) => {
-        if (!tagsField) return
-        const t = raw.trim().toLowerCase().replace(/\s+/g, '-')
-        if (t && !tags.includes(t)) setField(tagsField, [...tags, t])
-        setTagDraft('')
-    }
     const commitSlug = () => {
         if (slugDraft && slugify(slugDraft) !== r.slug) onRename(r.slug, slugDraft)
         else setSlugDraft(r.slug)
@@ -73,22 +59,10 @@ export function PublishSheet({ resource, map, def, allTags, open, onClose, onPat
                             </label>
                         )}
 
-                        {tagsField && (
+                        {map.tags && references.tags && (
                             <div className="field">
                                 <span className="field__label">tags</span>
-                                <div className="chips">
-                                    {tags.map((t) => (
-                                        <button key={t} className="chip" type="button" onClick={() => setField(tagsField, tags.filter((x) => x !== t))}>{t} <span className="chip__x">✕</span></button>
-                                    ))}
-                                    <input className="chips__input" value={tagDraft} placeholder={tags.length ? 'add…' : 'add a tag…'} onChange={(e) => setTagDraft(e.target.value)} onFocus={() => setTagFocus(true)} onBlur={() => setTimeout(() => setTagFocus(false), 120)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(suggestions[0] && tagDraft ? suggestions[0] : tagDraft) }
-                                            else if (e.key === 'Backspace' && !tagDraft && tags.length) setField(tagsField, tags.slice(0, -1))
-                                        }} />
-                                </div>
-                                {tagFocus && suggestions.length > 0 && (
-                                    <div className="suggest">{suggestions.map((t) => <button key={t} type="button" className="suggest__item" onMouseDown={(e) => { e.preventDefault(); addTag(t) }}>{t}</button>)}</div>
-                                )}
+                                <ReferencePicker target={references.tags} value={flist(r, map.tags)} onChange={(slugs) => setField(map.tags, slugs)} />
                             </div>
                         )}
 

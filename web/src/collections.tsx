@@ -41,6 +41,7 @@ export interface CollectionView {
     experienceLabel: string
     def: CollectionDef
     map: Record<string, string>
+    references: Record<string, string>
     Experience: ComponentType<ExperienceProps>
     feedTitle: (r: Resource) => string
     feedSub: (r: Resource) => string | undefined
@@ -62,6 +63,7 @@ export function viewFor(def: CollectionDef, m: CollectionMapping): CollectionVie
         experienceLabel: model.label,
         def,
         map,
+        references: m.references ?? {},
         Experience: COMPONENTS[m.experience] ?? GenericExperience,
         feedTitle: (r) => {
             const f = titleField || fallbackTitle

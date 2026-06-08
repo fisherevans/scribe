@@ -19,9 +19,11 @@ type Mapping struct {
 
 // CollectionMapping binds one collection to an experience and maps that
 // experience's roles (title, body, tags, …) to the collection's field names.
+// References maps a reference role (e.g. tags) to the collection it points at.
 type CollectionMapping struct {
 	Experience string            `yaml:"experience" json:"experience"`
-	Fields     map[string]string `yaml:"fields,omitempty" json:"fields"` // role -> field name
+	Fields     map[string]string `yaml:"fields,omitempty" json:"fields"`         // role -> field name
+	References map[string]string `yaml:"references,omitempty" json:"references"` // role -> target collection
 }
 
 type Store struct {

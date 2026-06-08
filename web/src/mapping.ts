@@ -5,9 +5,22 @@ import { MODELS, type RoleDef } from './experiences/models'
 export interface CollectionMapping {
     experience: string
     fields: Record<string, string> // role -> schema field name ('body' role omitted; it's the markdown body)
+    references?: Record<string, string> // reference role -> target collection
 }
 export interface Mapping {
     collections: Record<string, CollectionMapping>
+}
+
+// referenceTargets: for each reference role on an experience, pick a target
+// collection (a collection named like the role, e.g. tags -> tags).
+function referenceTargets(experience: string, schema: Schema): Record<string, string> {
+    const out: Record<string, string> = {}
+    for (const role of MODELS[experience]?.roles ?? []) {
+        if (role.type !== 'reference') continue
+        const target = schema.collections.find((c) => c.name === role.role) || schema.collections.find((c) => c.name === role.role + 's')
+        if (target) out[role.role] = target.name
+    }
+    return out
 }
 
 // roleTypeMatches: does a schema field plausibly satisfy a role's type?
@@ -67,7 +80,10 @@ export function recommend(def: CollectionDef): CollectionMapping {
 export function resolve(schema: Schema, stored: Mapping | null): Mapping {
     const out: Mapping = { collections: {} }
     for (const def of schema.collections) {
-        out.collections[def.name] = stored?.collections?.[def.name] ?? recommend(def)
+        const m = stored?.collections?.[def.name] ?? recommend(def)
+        // Fill reference targets if the stored mapping didn't specify them.
+        const references = { ...referenceTargets(m.experience, schema), ...(m.references ?? {}) }
+        out.collections[def.name] = { ...m, references }
     }
     return out
 }

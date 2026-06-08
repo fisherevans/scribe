@@ -4,6 +4,7 @@ import type { Resource, Schema } from './types'
 import { fstr } from './types'
 import { viewFor, type CollectionView, type ResourcePatch } from './collections'
 import { resolve, isConfigured, type Mapping } from './mapping'
+import { DataContext, type DataApi } from './data'
 import { CollectionRail } from './components/CollectionRail'
 import { Feed } from './components/Feed'
 import { TopBar, type SaveStatus } from './components/TopBar'
@@ -66,6 +67,16 @@ export default function App() {
     const active = items.find((r) => r.slug === activeSlug) ?? null
     const tagItems = lists['tags'] ?? []
     const allTags = tagItems.map((t) => t.slug)
+
+    // Read-only data access for the reference picker etc.
+    const dataApi = useMemo<DataApi>(() => ({
+        list: (c) => lists[c] ?? [],
+        labelFor: (c, slug) => {
+            const v = views.find((x) => x.name === c)
+            const r = (lists[c] ?? []).find((x) => x.slug === slug)
+            return r && v ? v.feedTitle(r) : slug
+        },
+    }), [lists, views])
 
     useEffect(() => { applyTheme(theme); saveTheme(theme) }, [theme])
     useEffect(() => saveSettings(settings), [settings])
@@ -271,6 +282,7 @@ export default function App() {
 
     const Experience = view?.Experience
     return (
+        <DataContext.Provider value={dataApi}>
         <div className={'app' + (drawer ? ' app--drawer' : '')}>
             <div className="app__nav">
                 <CollectionRail views={views} active={collection} onSelect={switchCollection} onSettings={() => setSettingsOpen(true)} />
@@ -305,7 +317,7 @@ export default function App() {
             </main>
 
             {view?.hasDetails && (
-                <PublishSheet resource={active} map={view.map} def={view.def} allTags={allTags} open={details} onClose={() => setDetails(false)} onPatch={patch} onRename={rename} onDelete={deleteActive} />
+                <PublishSheet resource={active} map={view.map} references={view.references} def={view.def} open={details} onClose={() => setDetails(false)} onPatch={patch} onRename={rename} onDelete={deleteActive} />
             )}
             <TitleSlugModal
                 open={modal.open}
@@ -337,5 +349,6 @@ export default function App() {
                 />
             )}
         </div>
+        </DataContext.Provider>
     )
 }
