@@ -44,6 +44,13 @@ describe('markdown round-trip', () => {
         expect(rt(md)).toBe(md)
     })
 
+    it('captioned image (figure) round-trips to the same node', () => {
+        // A caption turns a plain image into the figure HTML; it must survive
+        // the round-trip as an editable image node, not opaque raw HTML.
+        const md = '<figure data-figure="true"><img src="https://example.com/a.png" alt="alt text"><figcaption>A subtitle</figcaption></figure>'
+        expect(rt(md)).toBe(md)
+    })
+
     it('GFM table', () => {
         const md = '| Name | Role |\n| --- | --- |\n| Ada | eng |'
         expect(rt(md)).toBe(md)

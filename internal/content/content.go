@@ -39,6 +39,10 @@ func NewStore(repo string, s *schema.Schema) *Store { return &Store{repo: repo, 
 
 func (s *Store) Schema() *schema.Schema { return s.schema }
 
+// Root is the blog repo checkout the store is rooted at. Callers that need to
+// resolve paths outside the content tree (e.g. media uploads) use this.
+func (s *Store) Root() string { return s.repo }
+
 func (s *Store) collection(name string) (*schema.Collection, error) {
 	c, ok := s.schema.Collection(name)
 	if !ok {

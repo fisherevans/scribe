@@ -367,13 +367,29 @@ into frontmatter (pollutes files, fights the schema).
 
 ### Phase 2 - git edges + media
 - Conflict path: merge on promote, manual-resolve UI on auto-merge failure.
-- Media via an **upload plugin** (configurable, not hardwired to R2): paste or
-  drag an image -> the web app POSTs the file to the service, which writes it to
-  local disk, then invokes a configured CLI (env var, e.g. `SCRIBE_UPLOAD_CMD`)
-  with the local file path. The command's stdout is the URL to insert. Default
-  with no command: keep the local path / copy into `public/`. This lets anyone
-  wire their own media pipeline (R2, S3, scp, a script) without scribe knowing
-  about it - same swappability principle as auth.
+- Media via an **upload plugin** (configurable, not hardwired to R2) -
+  **implemented**. Paste, drag, or pick an image -> it *stages* client-side
+  (preview + editable filename + destination choice) and posts to
+  `POST /api/upload` only on confirm, with `dest`, `name`, `slug`. The chosen
+  name is the real stored filename (renaming the URL after upload would only
+  rewrite the reference, not move the file - hence name-before-upload). Two
+  destinations, chosen per-image:
+  - external (`dest=external`): the service spools the bytes to a temp file and
+    runs `SCRIBE_UPLOAD_CMD` (`sh -c`) with `SCRIBE_UPLOAD_FILE`,
+    `SCRIBE_UPLOAD_NAME`, `SCRIBE_UPLOAD_EXT`, `SCRIBE_UPLOAD_TYPE`, and
+    `SCRIBE_UPLOAD_SLUG` (the post, usable as a key namespace) in the env. The
+    command's stdout (trimmed) is the URL. This is the swappable hook - R2, S3,
+    scp, any script - same swappability principle as auth.
+    [deploy/upload-plugin/](../deploy/upload-plugin/) is the R2 reference (script
+    + deploy overlay): it
+    mirrors the nottingham-bot `!upload` convention (S3 PutObject to the
+    media-fisher-sh bucket, key `<slug>/<YYYY/MM/DD>/<name>`, explicit
+    ContentType, returns the `media.fisher.sh` URL). Offered in the UI only when
+    configured (`GET /api/capabilities`).
+  - local / "page content" (`dest=local`): the file is copied into the site's
+    media input dir (from `.pages.yml`'s `media` block), grouped per-post under
+    `<input>/<slug>/`, and the matching output URL is returned. serveRoot serves
+    that dir under the output prefix so the image previews before any build runs.
 - Social-style feed navigation (timeline of posts, tap to edit).
 
 ### Phase 3 - extensibility + assist

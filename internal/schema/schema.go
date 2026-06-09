@@ -18,6 +18,16 @@ import (
 type Schema struct {
 	Collections []Collection `json:"collections"`
 	Primary     string       `json:"primary"` // settings.primary, if set
+	Media       Media        `json:"media"`   // site media config (uploads), if set
+}
+
+// Media mirrors .pages.yml's `media` block: the local fallback for in-repo
+// assets. Input is the repo-relative dir uploads are written to; Output is the
+// URL prefix that dir is served under. Drives scribe's default (no upload
+// command) media destination. Empty when the site doesn't configure media.
+type Media struct {
+	Input  string `json:"input"`
+	Output string `json:"output"`
 }
 
 // Collection is one Pages CMS collection (type: collection). File-typed entries
@@ -67,6 +77,10 @@ type raw struct {
 	Settings struct {
 		Primary string `yaml:"primary"`
 	} `yaml:"settings"`
+	Media struct {
+		Input  string `yaml:"input"`
+		Output string `yaml:"output"`
+	} `yaml:"media"`
 }
 
 type rawEntry struct {
@@ -125,6 +139,7 @@ func Parse(b []byte) (*Schema, error) {
 		return nil, fmt.Errorf("parse .pages.yml: %w", err)
 	}
 	s := &Schema{Primary: r.Settings.Primary}
+	s.Media = Media{Input: r.Media.Input, Output: r.Media.Output}
 	for _, e := range r.Content {
 		if e.Type != "" && e.Type != "collection" {
 			continue // skip file-typed entries for now

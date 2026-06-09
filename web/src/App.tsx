@@ -5,6 +5,7 @@ import { fstr, flist } from './types'
 import { viewFor, type CollectionView, type ResourcePatch, type Referencer } from './collections'
 import { resolve, isConfigured, type Mapping } from './mapping'
 import { DataContext, type DataApi } from './data'
+import { UploadContext } from './editor/uploadContext'
 import { CollectionRail } from './components/CollectionRail'
 import { Feed } from './components/Feed'
 import { TopBar, type SaveStatus } from './components/TopBar'
@@ -14,7 +15,7 @@ import { SetupWizard } from './components/SetupWizard'
 import { CascadeDialog, type Cascade } from './components/CascadeDialog'
 import { PublishReview, type PublishPhase } from './components/PublishReview'
 import { SyncBanner } from './components/SyncBanner'
-import type { PublishChange, SyncStatus } from './api'
+import type { Capabilities, PublishChange, SyncStatus } from './api'
 import { TitleSlugModal } from './components/TitleSlugModal'
 import { applyTheme, DEFAULT_THEME, loadTheme, saveTheme, type Theme } from './theme'
 import { loadSettings, saveSettings, liveUrl, type AppSettings } from './settings'
@@ -61,6 +62,7 @@ export default function App() {
     const [theme, setTheme] = useState<Theme>(loadTheme)
     const [settings, setSettings] = useState<AppSettings>(loadSettings)
     const [loadError, setLoadError] = useState<string | null>(null)
+    const [caps, setCaps] = useState<Capabilities | null>(null)
     const saveTimer = useRef<number | null>(null)
     const railW = useRef(loadRail())
 
@@ -146,6 +148,7 @@ export default function App() {
                 writeHash(start, firstSel[start], true)
             })
             .catch((e) => setLoadError(e instanceof Error ? e.message : String(e)))
+        api.capabilities().then(setCaps).catch(() => {})
     }, [])
 
     // Back/forward + manual hash edits.
@@ -427,6 +430,7 @@ export default function App() {
     const Experience = view?.Experience
     return (
         <DataContext.Provider value={dataApi}>
+        <UploadContext.Provider value={{ externalEnabled: caps?.upload.external ?? false, collection, slug: activeSlug ?? '' }}>
         <SyncBanner status={sync} retrying={syncRetrying} onRetry={retrySync} />
         <div className={'app' + (drawer ? ' app--drawer' : '')}>
             <div className="app__nav">
@@ -505,6 +509,7 @@ export default function App() {
                 />
             )}
         </div>
+        </UploadContext.Provider>
         </DataContext.Provider>
     )
 }

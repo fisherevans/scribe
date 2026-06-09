@@ -57,12 +57,40 @@ export const api = {
     publish(): Promise<PublishResult> {
         return fetch('/api/publish', { method: 'POST' }).then(json)
     },
+    // Upload an image. dest 'external' runs the configured upload command (CDN);
+    // 'local' copies into the site media dir, grouped per-post when a slug is
+    // given. name is the chosen base filename (extension is kept server-side).
+    upload(file: File, opts: { dest: 'external' | 'local'; name?: string; slug?: string }): Promise<{ url: string }> {
+        const body = new FormData()
+        body.append('file', file)
+        body.append('dest', opts.dest)
+        if (opts.name) body.append('name', opts.name)
+        if (opts.slug) body.append('slug', opts.slug)
+        return fetch('/api/upload', { method: 'POST', body }).then(json)
+    },
+    capabilities(): Promise<Capabilities> {
+        return fetch('/api/capabilities').then(json)
+    },
+    // In-repo images the editor can reuse (the post's folder first, then the
+    // media root). For the "browse repo images" picker.
+    media(slug?: string): Promise<{ items: MediaItem[] }> {
+        return fetch('/api/media' + (slug ? `?slug=${encodeURIComponent(slug)}` : '')).then(json)
+    },
     syncStatus(): Promise<SyncStatus> {
         return fetch('/api/sync').then(json)
     },
     syncNow(): Promise<SyncStatus> {
         return fetch('/api/sync', { method: 'POST' }).then(json)
     },
+}
+
+export interface Capabilities {
+    upload: { external: boolean }
+}
+
+export interface MediaItem {
+    name: string
+    url: string
 }
 
 export interface SyncStatus {

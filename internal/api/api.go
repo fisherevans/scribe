@@ -27,11 +27,12 @@ type Server struct {
 	mapping   *mapping.Store
 	git       *git.Repo // nil when the git staging layer is disabled
 	publicDir string
-	ui        fs.FS // embedded/served editor UI; nil = API-only (dev uses Vite)
+	uploadCmd string // SCRIBE_UPLOAD_CMD; empty = copy into the site media dir
+	ui        fs.FS  // embedded/served editor UI; nil = API-only (dev uses Vite)
 }
 
-func New(c *content.Store, notes *store.Notes, m *mapping.Store, g *git.Repo, publicDir string, ui fs.FS) *Server {
-	return &Server{store: c, notes: notes, mapping: m, git: g, publicDir: publicDir, ui: ui}
+func New(c *content.Store, notes *store.Notes, m *mapping.Store, g *git.Repo, publicDir, uploadCmd string, ui fs.FS) *Server {
+	return &Server{store: c, notes: notes, mapping: m, git: g, publicDir: publicDir, uploadCmd: uploadCmd, ui: ui}
 }
 
 func (s *Server) Routes() *http.ServeMux {
@@ -56,6 +57,9 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/sync", s.syncStatus)
 	mux.HandleFunc("POST /api/sync", s.syncNow)
 	mux.HandleFunc("GET /api/c/{collection}/{slug}/serialized", s.serialized)
+	mux.HandleFunc("POST /api/upload", s.upload)
+	mux.HandleFunc("GET /api/capabilities", s.capabilities)
+	mux.HandleFunc("GET /api/media", s.media)
 	return mux
 }
 
@@ -407,6 +411,14 @@ func (s *Server) serveRoot(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Locally-uploaded media lands in the site's media input dir (e.g.
+	// src/assets/uploads), served under its output prefix (e.g. /assets/uploads).
+	// The blog build maps these, but scribe serves them directly so a
+	// just-uploaded image previews before any build runs.
+	if f, ok := s.mediaFile(clean); ok {
+		http.ServeFile(w, r, f)
+		return
+	}
 	if s.ui != nil {
 		index, err := fs.ReadFile(s.ui, "index.html")
 		if err == nil {
@@ -416,6 +428,25 @@ func (s *Server) serveRoot(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	http.NotFound(w, r)
+}
+
+// mediaFile maps a cleaned request path under the site's media output prefix to
+// the on-disk file in the media input dir, if it exists. ok is false when media
+// is unconfigured, the path is outside the prefix, or the file is missing.
+func (s *Server) mediaFile(clean string) (string, bool) {
+	media := s.store.Schema().Media
+	if media.Input == "" || media.Output == "" {
+		return "", false
+	}
+	prefix := "/" + strings.Trim(media.Output, "/") + "/"
+	if !strings.HasPrefix(clean, prefix) {
+		return "", false
+	}
+	f := filepath.Join(s.store.Root(), filepath.FromSlash(media.Input), filepath.FromSlash(strings.TrimPrefix(clean, prefix)))
+	if st, err := os.Stat(f); err == nil && !st.IsDir() {
+		return f, true
+	}
+	return "", false
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {

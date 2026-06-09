@@ -35,6 +35,27 @@ function newMarkdownIt(): MarkdownIt {
         }
         return true
     })
+    // Map our emitted figure HTML (<figure data-figure>…) back into the image
+    // node, carrying its caption, rather than letting it fall through to an
+    // opaque rawHtml block. A captioned image and a plain image are one node;
+    // the caption is the only difference. Tolerant of attribute order; anything
+    // that doesn't match stays raw HTML.
+    md.core.ruler.after('inline', 'figure_block', (state) => {
+        for (const tok of state.tokens) {
+            if (tok.type !== 'html_block' || !/data-figure/.test(tok.content)) continue
+            const src = tok.content.match(/<img[^>]*\ssrc="([^"]*)"/i)
+            if (!src) continue
+            const alt = tok.content.match(/<img[^>]*\salt="([^"]*)"/i)
+            const cap = tok.content.match(/<figcaption[^>]*>([\s\S]*?)<\/figcaption>/i)
+            tok.type = 'image_block'
+            tok.attrs = [
+                ['src', src[1]],
+                ['alt', alt ? alt[1] : ''],
+                ['caption', cap ? cap[1].trim() : ''],
+            ]
+        }
+        return true
+    })
     // Normalize GFM table tokens for the TipTap table schema: drop thead/tbody
     // wrappers (rows become direct children of the table) and wrap each cell's
     // inline content in a paragraph (cells hold block content).
@@ -81,7 +102,11 @@ const tokenSpec = {
         getAttrs: (tok: any) => ({
             src: tok.attrGet('src'),
             title: tok.attrGet('title') || null,
-            alt: (tok.children && tok.children[0] && tok.children[0].content) || '',
+            // A markdown image keeps its alt in the inline child text (the attr
+            // is ''); the figure rule sets it as an attr instead. Prefer the
+            // child, fall back to the attr. caption is figure-only.
+            alt: (tok.children && tok.children[0] && tok.children[0].content) || tok.attrGet('alt') || '',
+            caption: tok.attrGet('caption') || '',
         }),
     },
     hardbreak: { node: 'hardBreak' },
@@ -153,9 +178,20 @@ const serializer = new MarkdownSerializer(
         listItem(state, node) {
             state.renderContent(node)
         },
+        // One image node, two renderings: with a caption it serializes to the
+        // figure HTML block (caption == subtitle); without, to a plain markdown
+        // image. Round-trips with the figure_block parse rule above.
         image(state, node) {
-            const title = node.attrs.title ? ' "' + String(node.attrs.title).replace(/"/g, '\\"') + '"' : ''
-            state.write('![' + state.esc(node.attrs.alt || '') + '](' + node.attrs.src + title + ')')
+            const { src, alt, caption, title } = node.attrs
+            if (caption) {
+                state.write(
+                    `<figure data-figure="true"><img src="${src}" alt="${alt || ''}"><figcaption>${caption}</figcaption></figure>`,
+                )
+                state.closeBlock(node)
+                return
+            }
+            const t = title ? ' "' + String(title).replace(/"/g, '\\"') + '"' : ''
+            state.write('![' + state.esc(alt || '') + '](' + src + t + ')')
             state.closeBlock(node) // block image
         },
         hardBreak(state, node, parent, index) {
@@ -202,13 +238,6 @@ const serializer = new MarkdownSerializer(
             state.write(`<div data-callout="true" data-tone="${node.attrs.tone}">\n\n`)
             state.renderContent(node)
             state.write('</div>')
-            state.closeBlock(node)
-        },
-        figure(state, node) {
-            const { src, alt, caption } = node.attrs
-            state.write(
-                `<figure data-figure="true"><img src="${src}" alt="${alt}"><figcaption>${caption}</figcaption></figure>`,
-            )
             state.closeBlock(node)
         },
     },

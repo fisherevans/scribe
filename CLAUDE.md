@@ -25,11 +25,16 @@ is the practical "how to work in here" companion.
     `prosemirror-markdown` parser + serializer over the TipTap schema. Block-level
     raw HTML (`html_block`) maps to the opaque `RawHtml` node and serializes
     verbatim; lone-image paragraphs lift to block images; GFM tables normalized.
-    Changing it risks lossy saves - run `npm test` (round-trip fidelity).
+    Our emitted `<figure data-figure>` HTML is parsed back into the `image` node
+    (with its caption) rather than left as raw HTML - a captioned image and a
+    plain one are the same node. Changing it risks lossy saves - run `npm test`.
   - `web/src/editor/extensions.ts` - the single source of the editor extension
     set, shared by the live editor and the markdown tests.
-  - Custom nodes: `RawHtmlNode` (opaque), `Callout`, `Figure`, `ImageBlock`,
-    `CodeBlock` (lowlight). Each has a React node view with edit/delete controls.
+  - Custom nodes: `RawHtmlNode` (opaque), `Callout`, `ImageBlock`, `CodeBlock`
+    (lowlight). `ImageBlock` is one node for both plain images and figures - a
+    non-empty `caption` is the only difference (serializes to `<figure>`, else
+    `![]()`). It's edited via a modal (`ImageEditModal`: preview, source, alt,
+    caption, replace-via-upload, browse-repo-images), not inline forms.
 
 ## Conventions / gotchas
 
@@ -49,6 +54,19 @@ is the practical "how to work in here" companion.
   parse->serialize without the UI. Handy for fidelity spot-checks.
 - **Don't run editing tests against real untracked files** - autosave writes to
   disk. Use a committed file (recoverable) or a throwaway, and clean up.
+- **Image upload** (`POST /api/upload`): paste/drag/pick an image and it enters a
+  client-side **staging** state (preview + editable filename + destination
+  choice) before anything is sent - the chosen name becomes the real stored
+  filename. On confirm the form posts `file`, `dest` (`external`|`local`),
+  `name`, `slug`. `dest=external` shells out to `SCRIBE_UPLOAD_CMD` (file +
+  metadata via `SCRIBE_UPLOAD_*` env, stdout is the URL - see
+  [deploy/upload-plugin/upload-r2.sh](deploy/upload-plugin/upload-r2.sh));
+  `dest=local` copies into the
+  site's `media.input` dir under a per-post subdir (`<input>/<slug>/`) and serves
+  it back under `media.output`. `GET /api/capabilities` tells the UI whether
+  external is configured (the toggle hides when it isn't). Staged `image`/`figure`
+  nodes carry a `staging` attr (`rendered: false`); `ContentEditor` skips
+  autosave while any node is staged so a half-finished `![]()` never lands.
 
 ## Test
 

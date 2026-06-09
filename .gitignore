@@ -22,3 +22,8 @@
 # Local UI build embedded by go:embed; only the placeholder is tracked
 internal/webui/dist/*
 !internal/webui/dist/.gitkeep
+
+# Parked/experimental code, not part of the build
+/.parked/
+# Local dev run data (SCRIBE_DATA for the throwaway server)
+/.run-data/

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { BubbleToolbar } from './BubbleToolbar'
 import { editorExtensions } from './extensions'
 import { createMarkdownParser, serializeMarkdown } from './markdown'
+import { hasStaged } from './imageUpload'
 import type { MarkdownParser } from 'prosemirror-markdown'
 
 const countWords = (text: string) => (text.trim() ? text.trim().split(/\s+/).length : 0)
@@ -44,8 +45,10 @@ export function ContentEditor({ docKey, body, editable, onBody, onWords, classNa
             if (autoFocus && !bodyRef.current) editor.commands.focus('end')
         },
         // Markdown is the source of truth; serialize the doc on every change.
+        // Hold off while an image is staged - serializing now would autosave a
+        // half-finished `![]()`. The upload's completion fires another update.
         onUpdate: ({ editor }) => {
-            onBody(serializeMarkdown(editor.state.doc))
+            if (!hasStaged(editor)) onBody(serializeMarkdown(editor.state.doc))
             wordsRef.current?.(countWords(editor.state.doc.textContent))
         },
     })
@@ -85,7 +88,12 @@ export function ContentEditor({ docKey, body, editable, onBody, onWords, classNa
 
     return (
         <>
-            <EditorContent editor={editor} className={className ?? 'page__body'} />
+            {/* The `tiptap` class is load-bearing: the global drag handle only keeps
+                itself visible while the mouse moves onto an element whose class is
+                `tiptap` or `drag-handle`. Our editor DOM is classed `prose`, so
+                without this the handle vanishes the instant the cursor leaves the
+                text toward the gutter where the handle lives. */}
+            <EditorContent editor={editor} className={(className ?? 'page__body') + ' tiptap'} />
             {editor && <BubbleToolbar editor={editor} />}
         </>
     )

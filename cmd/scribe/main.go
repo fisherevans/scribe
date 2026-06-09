@@ -36,6 +36,7 @@ func main() {
 	backupInterval := flag.Duration("backup-interval", envDur("SCRIBE_BACKUP_INTERVAL", 2*time.Minute), "how often to back up staging to origin")
 	syncInterval := flag.Duration("sync-interval", envDur("SCRIBE_SYNC_INTERVAL", time.Minute), "how often to pull external edits to the publish branch")
 	webDir := flag.String("web-dir", os.Getenv("SCRIBE_WEB_DIR"), "serve the built UI from this dir (overrides the embedded build)")
+	uploadCmd := flag.String("upload-cmd", os.Getenv("SCRIBE_UPLOAD_CMD"), "shell command run per image upload; receives SCRIBE_UPLOAD_FILE/NAME/EXT/TYPE in env and must print the resulting URL to stdout. Empty: copy into the site's media dir")
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -94,7 +95,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           api.New(cstore, notes, mstore, grepo, publicDir, ui).Routes(),
+		Handler:           api.New(cstore, notes, mstore, grepo, publicDir, *uploadCmd, ui).Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

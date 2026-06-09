@@ -7,9 +7,9 @@ import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import GlobalDragHandle from 'tiptap-extension-global-drag-handle'
 import { ImageBlock } from './ImageBlock'
+import { ImageUpload } from './imageUpload'
 import { RawHtml } from './RawHtmlNode'
 import { Callout } from './CalloutNode'
-import { Figure } from './FigureNode'
 import { CodeBlock } from './CodeBlock'
 import { SlashCommand } from './SlashCommand'
 import { LinkShortcut } from './BubbleToolbar'
@@ -30,10 +30,10 @@ export function editorExtensions() {
             },
         }),
         ImageBlock,
+        ImageUpload,
         Link.configure({ openOnClick: false, autolink: false }),
         RawHtml,
         Callout,
-        Figure,
         Table.configure({ resizable: false }),
         TableRow,
         TableHeader,
