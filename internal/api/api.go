@@ -6,6 +6,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -82,11 +83,11 @@ func (s *Server) wrap(collection string, r content.Resource) resource {
 
 // stagedSet is the set of repo-relative paths with unpublished (staged) changes,
 // or nil when git is disabled.
-func (s *Server) stagedSet() map[string]bool {
+func (s *Server) stagedSet(ctx context.Context) map[string]bool {
 	if s.git == nil {
 		return nil
 	}
-	set, err := s.git.StagedPaths()
+	set, err := s.git.StagedPaths(ctx)
 	if err != nil {
 		return nil
 	}
@@ -154,7 +155,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	staged := s.stagedSet()
+	staged := s.stagedSet(r.Context())
 	out := make([]resource, len(rs))
 	for i, res := range rs {
 		out[i] = s.wrap(c, res)
@@ -202,7 +203,7 @@ func (s *Server) save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res := s.wrap(c, *saved)
-	s.applyState(c, &res, s.stagedSet())
+	s.applyState(c, &res, s.stagedSet(r.Context()))
 	writeJSON(w, res)
 }
 
@@ -268,12 +269,12 @@ type change struct {
 // publishDiff returns the full staged-vs-main changeset. This is exactly what
 // publish will land on main, atomically. Empty when nothing is staged or git
 // is disabled.
-func (s *Server) publishDiff(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) publishDiff(w http.ResponseWriter, r *http.Request) {
 	if s.git == nil {
 		writeJSON(w, map[string]any{"changes": []change{}, "enabled": false})
 		return
 	}
-	raw, err := s.git.Diff()
+	raw, err := s.git.Diff(r.Context())
 	if err != nil {
 		fail(w, err)
 		return
@@ -303,7 +304,8 @@ func (s *Server) publish(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{"published": 0, "enabled": false})
 		return
 	}
-	raw, err := s.git.Diff()
+	// A publish must not abort partway on a client disconnect.
+	raw, err := s.git.Diff(context.Background())
 	if err != nil {
 		fail(w, err)
 		return

@@ -234,15 +234,16 @@ type Change struct {
 
 // Diff is the full set of staged-but-unpublished changes (staging vs main).
 // This is exactly what Publish will land on main, atomically.
-func (r *Repo) Diff() ([]Change, error) {
+func (r *Repo) Diff(ctx context.Context) ([]Change, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.diffChanges()
+	return r.diffChanges(ctx)
 }
 
-// diffChanges computes the staging-vs-main changeset. Caller holds r.mu.
-func (r *Repo) diffChanges() ([]Change, error) {
-	out, err := r.run("diff", "--name-status", "-M", r.main, r.staging)
+// diffChanges computes the staging-vs-main changeset. Caller holds r.mu. The
+// context cancels the underlying git diff (e.g. a disconnected request).
+func (r *Repo) diffChanges(ctx context.Context) ([]Change, error) {
+	out, err := r.runWithinCtx(ctx, gitLocalTimeout, "diff", "--name-status", "-M", r.main, r.staging)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +278,7 @@ func (r *Repo) diffChanges() ([]Change, error) {
 // would otherwise fire a `git diff` per collection. The returned map is shared
 // and must be treated as read-only. Invalidated whenever staging vs main moves
 // (commit/publish/sync).
-func (r *Repo) StagedPaths() (map[string]bool, error) {
+func (r *Repo) StagedPaths(ctx context.Context) (map[string]bool, error) {
 	r.stagedMu.Lock()
 	if r.staged != nil && time.Since(r.stagedAt) < stagedCacheTTL {
 		cached := r.staged
@@ -286,7 +287,7 @@ func (r *Repo) StagedPaths() (map[string]bool, error) {
 	}
 	r.stagedMu.Unlock()
 
-	changes, err := r.Diff()
+	changes, err := r.Diff(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -323,7 +324,8 @@ func (r *Repo) Publish(summary string) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	changes, err := r.diffChanges()
+	// Publish is a mutating, atomic op; it must not abort on a client disconnect.
+	changes, err := r.diffChanges(context.Background())
 	if err != nil {
 		return 0, err
 	}
@@ -467,16 +469,22 @@ func (r *Repo) okState() string { return "ok" }
 
 // ---- internals ----------------------------------------------------------
 
-// run executes a local git command with the local timeout.
+// run executes a local git command with the local timeout, uncancellable by a
+// request (used by mutating/internal ops that shouldn't abort mid-way).
 func (r *Repo) run(args ...string) (string, error) {
 	return r.runWithin(gitLocalTimeout, args...)
 }
 
-// runWithin executes a git command bounded by timeout. On timeout the process
-// is killed and a clear error returned, so a stuck git op can never hang a
-// caller (or the request behind it) indefinitely.
+// runWithin is run with an explicit timeout, still uncancellable by a request.
 func (r *Repo) runWithin(timeout time.Duration, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	return r.runWithinCtx(context.Background(), timeout, args...)
+}
+
+// runWithinCtx executes a git command bounded by timeout AND the parent context,
+// so it dies on either a timeout or the parent (e.g. a disconnected request)
+// being cancelled. A stuck git op can never hang a caller indefinitely.
+func (r *Repo) runWithinCtx(parent context.Context, timeout time.Duration, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = r.dir
@@ -484,8 +492,11 @@ func (r *Repo) runWithin(timeout time.Duration, args ...string) (string, error) 
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
 	err := cmd.Run()
-	if ctx.Err() == context.DeadlineExceeded {
+	switch ctx.Err() {
+	case context.DeadlineExceeded:
 		return out.String(), fmt.Errorf("git %s: timed out after %s", strings.Join(args, " "), timeout)
+	case context.Canceled:
+		return out.String(), fmt.Errorf("git %s: cancelled", strings.Join(args, " "))
 	}
 	if err != nil {
 		return out.String(), fmt.Errorf("git %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(errb.String()))

@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -29,7 +30,7 @@ func TestConcurrentReadsDuringWrites(t *testing.T) {
 				case <-stop:
 					return
 				default:
-					if _, err := r.StagedPaths(); err != nil {
+					if _, err := r.StagedPaths(context.Background()); err != nil {
 						t.Errorf("StagedPaths: %v", err)
 						return
 					}
@@ -77,7 +78,7 @@ func TestConcurrentReadsDuringWrites(t *testing.T) {
 
 	// Every committed resource is staged vs main (cache was invalidated by the
 	// last commit, so this recomputes).
-	set, err := r.StagedPaths()
+	set, err := r.StagedPaths(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

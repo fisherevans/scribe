@@ -62,7 +62,7 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "external upload not configured (set SCRIBE_UPLOAD_CMD)", http.StatusBadRequest)
 			return
 		}
-		url, err := s.uploadViaCmd(file, name, ext, hdr.Header.Get("Content-Type"), sanitizeSlug(r.FormValue("slug")))
+		url, err := s.uploadViaCmd(r.Context(), file, name, ext, hdr.Header.Get("Content-Type"), sanitizeSlug(r.FormValue("slug")))
 		if err != nil {
 			fail(w, err)
 			return
@@ -143,7 +143,7 @@ func (s *Server) capabilities(w http.ResponseWriter, _ *http.Request) {
 // uploadViaCmd spools the upload to a temp file and runs the configured command,
 // passing the file's location and metadata via env. The command writes the
 // public URL to stdout.
-func (s *Server) uploadViaCmd(file io.Reader, name, ext, contentType, slug string) (string, error) {
+func (s *Server) uploadViaCmd(ctx context.Context, file io.Reader, name, ext, contentType, slug string) (string, error) {
 	tmp, err := os.CreateTemp("", "scribe-upload-*"+ext)
 	if err != nil {
 		return "", fmt.Errorf("create temp file: %w", err)
@@ -157,11 +157,12 @@ func (s *Server) uploadViaCmd(file io.Reader, name, ext, contentType, slug strin
 		return "", err
 	}
 
-	// Bound the upload command so a stuck uploader (unreachable store, hung
-	// network) fails instead of holding the request open.
-	ctx, cancel := context.WithTimeout(context.Background(), uploadCmdTimeout)
+	// Bound the upload command (so a stuck uploader fails instead of holding the
+	// request open) and tie it to the request context (so a client disconnect
+	// aborts it too).
+	cctx, cancel := context.WithTimeout(ctx, uploadCmdTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "sh", "-c", s.uploadCmd)
+	cmd := exec.CommandContext(cctx, "sh", "-c", s.uploadCmd)
 	cmd.Env = append(os.Environ(),
 		"SCRIBE_UPLOAD_FILE="+tmp.Name(),
 		"SCRIBE_UPLOAD_NAME="+name,
@@ -170,8 +171,11 @@ func (s *Server) uploadViaCmd(file io.Reader, name, ext, contentType, slug strin
 		"SCRIBE_UPLOAD_SLUG="+slug, // the post being edited; e.g. an R2 key namespace
 	)
 	out, err := cmd.Output()
-	if ctx.Err() == context.DeadlineExceeded {
+	switch cctx.Err() {
+	case context.DeadlineExceeded:
 		return "", fmt.Errorf("upload command timed out after %s", uploadCmdTimeout)
+	case context.Canceled:
+		return "", fmt.Errorf("upload cancelled")
 	}
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {

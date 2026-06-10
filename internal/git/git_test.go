@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -124,6 +125,19 @@ func TestCommitNoOpWhenUnchanged(t *testing.T) {
 	}
 }
 
+func TestDiffRespectsCancellation(t *testing.T) {
+	dir := initRepo(t)
+	r, err := Open(dir, "staging", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled - the git diff must not run / must error
+	if _, err := r.Diff(ctx); err == nil {
+		t.Fatal("expected Diff with a cancelled context to error")
+	}
+}
+
 func TestDiffReportsChangeset(t *testing.T) {
 	dir := initRepo(t)
 	r, err := Open(dir, "staging", "", false)
@@ -138,7 +152,7 @@ func TestDiffReportsChangeset(t *testing.T) {
 	if err := r.Commit("posts/new", []string{"posts/new.md"}, "add new"); err != nil {
 		t.Fatal(err)
 	}
-	changes, err := r.Diff()
+	changes, err := r.Diff(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +196,7 @@ func TestPublishIsAtomicAndConverges(t *testing.T) {
 		t.Fatal("main missing added file after publish")
 	}
 	// staging and main converge; nothing left staged.
-	staged, err := r.StagedPaths()
+	staged, err := r.StagedPaths(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
