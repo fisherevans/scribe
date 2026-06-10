@@ -16,6 +16,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/fisherevans/scribe/internal/schema"
 	"gopkg.in/yaml.v3"
@@ -33,9 +35,25 @@ type Resource struct {
 type Store struct {
 	repo   string
 	schema *schema.Schema
+
+	// Parsed-resource cache, keyed by absolute file path and validated by the
+	// file's mtime+size, so a list doesn't re-read and re-parse every file on
+	// every request. Self-invalidating on any on-disk change (scribe writes, git
+	// resets/rebases, external edits); scribe's own writes also invalidate
+	// explicitly to cover coarse-mtime filesystems.
+	mu    sync.Mutex
+	cache map[string]cached
 }
 
-func NewStore(repo string, s *schema.Schema) *Store { return &Store{repo: repo, schema: s} }
+type cached struct {
+	mod  time.Time
+	size int64
+	res  Resource
+}
+
+func NewStore(repo string, s *schema.Schema) *Store {
+	return &Store{repo: repo, schema: s, cache: map[string]cached{}}
+}
 
 func (s *Store) Schema() *schema.Schema { return s.schema }
 
@@ -118,7 +136,23 @@ func (s *Store) Read(name, slug string) (*Resource, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw, err := os.ReadFile(s.path(c, slug))
+	path := s.path(c, slug)
+	// Stat before reading: if the cached entry matches the current mtime+size,
+	// skip the read+parse. Stat is one cheap call vs an open+read of the whole
+	// file (the win on an NFS-backed tree).
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("read %s/%s: %w", name, slug, err)
+	}
+	s.mu.Lock()
+	if e, ok := s.cache[path]; ok && e.size == fi.Size() && e.mod.Equal(fi.ModTime()) {
+		res := e.res.clone()
+		s.mu.Unlock()
+		return &res, nil
+	}
+	s.mu.Unlock()
+
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s/%s: %w", name, slug, err)
 	}
@@ -133,7 +167,34 @@ func (s *Store) Read(name, slug string) (*Resource, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse %s/%s: %w", name, slug, err)
 	}
-	return &Resource{Slug: slug, Fields: fields, Body: body}, nil
+	res := Resource{Slug: slug, Fields: fields, Body: body}
+
+	// Cache owns its own copy; every caller gets an independent clone so a
+	// mutation can't corrupt the cache.
+	s.mu.Lock()
+	s.cache[path] = cached{mod: fi.ModTime(), size: fi.Size(), res: res.clone()}
+	s.mu.Unlock()
+	return &res, nil
+}
+
+// clone returns a copy with an independent top-level Fields map. Field values
+// (strings, bools, numbers, and slices/maps from JSON) are not mutated in place
+// by callers, so a shallow field copy is sufficient.
+func (r Resource) clone() Resource {
+	f := make(map[string]any, len(r.Fields))
+	for k, v := range r.Fields {
+		f[k] = v
+	}
+	return Resource{Slug: r.Slug, Fields: f, Body: r.Body}
+}
+
+// invalidate drops the cache entry for a path after scribe writes/moves/removes
+// it, so the next Read re-parses even on a filesystem whose mtime resolution is
+// too coarse to notice a same-second rewrite.
+func (s *Store) invalidate(path string) {
+	s.mu.Lock()
+	delete(s.cache, path)
+	s.mu.Unlock()
 }
 
 // ---- write --------------------------------------------------------------
@@ -147,7 +208,12 @@ func (s *Store) Write(name string, r Resource) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path(c, r.Slug), out, 0o644)
+	path := s.path(c, r.Slug)
+	if err := os.WriteFile(path, out, 0o644); err != nil {
+		return err
+	}
+	s.invalidate(path)
+	return nil
 }
 
 // Serialize returns the bytes Write would produce, without touching disk.
@@ -185,7 +251,12 @@ func (s *Store) Rename(name, from, to string) error {
 	if _, err := os.Stat(src); os.IsNotExist(err) {
 		return nil // unsaved draft
 	}
-	return os.Rename(src, dst)
+	if err := os.Rename(src, dst); err != nil {
+		return err
+	}
+	s.invalidate(src)
+	s.invalidate(dst)
+	return nil
 }
 
 func (s *Store) Delete(name, slug string) error {
@@ -193,7 +264,9 @@ func (s *Store) Delete(name, slug string) error {
 	if err != nil {
 		return err
 	}
-	err = os.Remove(s.path(c, slug))
+	path := s.path(c, slug)
+	err = os.Remove(path)
+	s.invalidate(path)
 	if os.IsNotExist(err) {
 		return nil
 	}

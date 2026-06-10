@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fisherevans/scribe/internal/schema"
 )
@@ -144,6 +145,57 @@ func TestRenameAndDelete(t *testing.T) {
 	}
 	if _, err := os.Stat(s.path(mustCol(t, s, "posts"), "new")); !os.IsNotExist(err) {
 		t.Error("file remains after delete")
+	}
+}
+
+func TestReadCacheNeverServesStaleOrCorrupt(t *testing.T) {
+	s := newTestStore(t)
+	in := Resource{Slug: "p", Fields: map[string]any{"title": "Two", "date": "2026-01-01"}, Body: "a\n"}
+	if err := s.Write("posts", in); err != nil {
+		t.Fatal(err)
+	}
+
+	// First read populates the cache.
+	r1, err := s.Read("posts", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r1.Fields["title"] != "Two" {
+		t.Fatalf("title = %v", r1.Fields["title"])
+	}
+
+	// Mutating the returned copy must not poison the cache.
+	r1.Fields["title"] = "MUT"
+	if r2, _ := s.Read("posts", "p"); r2.Fields["title"] != "Two" {
+		t.Fatalf("caller mutation leaked into cache: %v", r2.Fields["title"])
+	}
+
+	// A scribe write is reflected on the next read (explicit invalidation).
+	in.Fields["title"] = "Three"
+	if err := s.Write("posts", in); err != nil {
+		t.Fatal(err)
+	}
+	if r3, _ := s.Read("posts", "p"); r3.Fields["title"] != "Three" {
+		t.Fatalf("write not reflected: %v", r3.Fields["title"])
+	}
+
+	// An external, same-size change (git reset / Pages CMS) with a different
+	// mtime is reflected - the mtime check catches it even when size matches.
+	path := s.path(mustCol(t, s, "posts"), "p")
+	raw, _ := os.ReadFile(path)
+	swapped := strings.Replace(string(raw), "Three", "Tlhre", 1) // same length
+	if swapped == string(raw) {
+		t.Fatal("test setup: replacement did not change content")
+	}
+	if err := os.WriteFile(path, []byte(swapped), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(3 * time.Second)
+	if err := os.Chtimes(path, future, future); err != nil {
+		t.Fatal(err)
+	}
+	if r4, _ := s.Read("posts", "p"); r4.Fields["title"] != "Tlhre" {
+		t.Fatalf("external change not reflected: %v", r4.Fields["title"])
 	}
 }
 
