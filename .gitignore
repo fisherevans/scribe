@@ -27,3 +27,5 @@ internal/webui/dist/*
 /.parked/
 # Local dev run data (SCRIBE_DATA for the throwaway server)
 /.run-data/
+# Local dev launcher (machine-specific paths)
+/.run/
