@@ -8,6 +8,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"math/rand"
@@ -183,6 +184,22 @@ func (s *Server) save(w http.ResponseWriter, r *http.Request) {
 	}
 	in.Resource.Slug = r.PathValue("slug")
 	if err := s.store.Write(c, in.Resource); err != nil {
+		// Concurrent-edit conflict: the file changed since the client read it.
+		// Return 409 + the current server resource so the client can reconcile
+		// (reload / overwrite / merge) instead of silently clobbering.
+		if errors.Is(err, content.ErrConflict) {
+			cur, rerr := s.store.Read(c, in.Resource.Slug)
+			if rerr != nil {
+				fail(w, rerr)
+				return
+			}
+			out := s.wrap(c, *cur)
+			s.applyState(c, &out, s.stagedSet(r.Context()))
+			w.Header().Set("content-type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(out)
+			return
+		}
 		fail(w, err)
 		return
 	}

@@ -8,6 +8,17 @@ async function json(res: Response) {
     return res.status === 204 ? null : res.json()
 }
 
+// Thrown by save() on a 409: the file changed since the client read it. Carries
+// the current server resource so the UI can reload/overwrite/merge.
+export class ConflictError extends Error {
+    current: Resource
+    constructor(current: Resource) {
+        super('conflict')
+        this.name = 'ConflictError'
+        this.current = current
+    }
+}
+
 const C = (c: string) => `/api/c/${encodeURIComponent(c)}`
 const R = (c: string, slug: string) => `${C(c)}/${encodeURIComponent(slug)}`
 
@@ -30,12 +41,14 @@ export const api = {
     },
     // Full resource: the service rewrites the whole file, so a partial would drop
     // untouched frontmatter.
-    save(c: string, slug: string, data: Resource): Promise<Resource> {
-        return fetch(R(c, slug), {
+    async save(c: string, slug: string, data: Resource): Promise<Resource> {
+        const res = await fetch(R(c, slug), {
             method: 'PUT',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(data),
-        }).then(json)
+        })
+        if (res.status === 409) throw new ConflictError(await res.json())
+        return json(res)
     },
     create(c: string): Promise<Resource> {
         return fetch(C(c), { method: 'POST' }).then(json)

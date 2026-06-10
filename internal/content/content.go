@@ -10,6 +10,9 @@
 package content
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,12 +26,29 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ErrConflict is returned by Write when the on-disk file changed since the
+// version the caller based its edit on - i.e. someone else (another tab, device,
+// or an external/git edit) wrote it in the meantime. The caller should not have
+// clobbered it; surface a conflict instead.
+var ErrConflict = errors.New("file changed on disk since it was read")
+
+// version is a short content hash identifying an exact on-disk file state. Used
+// for optimistic-concurrency checks on write.
+func version(raw []byte) string {
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:8]) // 64 bits, ample to detect a change
+}
+
 // Resource is a single piece of content: its slug, its frontmatter fields as an
 // open map, and an optional markdown body (empty for yaml-only collections).
 type Resource struct {
 	Slug   string         `json:"slug"`
 	Fields map[string]any `json:"fields"`
 	Body   string         `json:"body"`
+	// Version is a content hash of the on-disk file at read time. The client
+	// echoes it on save; Write rejects the save (ErrConflict) if the file no
+	// longer matches. Empty means "no base" (a new file, or a forced overwrite).
+	Version string `json:"version"`
 }
 
 // Store is rooted at a blog repo checkout and driven by its schema.
@@ -167,7 +187,7 @@ func (s *Store) Read(name, slug string) (*Resource, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse %s/%s: %w", name, slug, err)
 	}
-	res := Resource{Slug: slug, Fields: fields, Body: body}
+	res := Resource{Slug: slug, Fields: fields, Body: body, Version: version(raw)}
 
 	// Cache owns its own copy; every caller gets an independent clone so a
 	// mutation can't corrupt the cache.
@@ -185,7 +205,7 @@ func (r Resource) clone() Resource {
 	for k, v := range r.Fields {
 		f[k] = v
 	}
-	return Resource{Slug: r.Slug, Fields: f, Body: r.Body}
+	return Resource{Slug: r.Slug, Fields: f, Body: r.Body, Version: r.Version}
 }
 
 // invalidate drops the cache entry for a path after scribe writes/moves/removes
@@ -209,6 +229,14 @@ func (s *Store) Write(name string, r Resource) error {
 		return err
 	}
 	path := s.path(c, r.Slug)
+	// Optimistic concurrency: when the caller based its edit on a known version,
+	// refuse to write if the file changed underneath (a concurrent writer). An
+	// empty Version skips the check (new file, or a deliberate overwrite).
+	if r.Version != "" {
+		if cur, e := os.ReadFile(path); e == nil && version(cur) != r.Version {
+			return ErrConflict
+		}
+	}
 	if err := os.WriteFile(path, out, 0o644); err != nil {
 		return err
 	}

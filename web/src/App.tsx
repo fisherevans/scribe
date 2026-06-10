@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api } from './api'
+import { api, ConflictError } from './api'
 import type { Resource, Schema } from './types'
 import { fstr, flist } from './types'
 import { viewFor, type CollectionView, type ResourcePatch, type Referencer } from './collections'
@@ -16,6 +16,7 @@ import { CascadeDialog, type Cascade } from './components/CascadeDialog'
 import { OrphanDialog, type Orphan } from './components/OrphanDialog'
 import { PublishReview, type PublishPhase } from './components/PublishReview'
 import { SyncBanner } from './components/SyncBanner'
+import { ConflictBanner } from './components/ConflictBanner'
 import type { Capabilities, PublishChange, SyncStatus } from './api'
 import { TitleSlugModal } from './components/TitleSlugModal'
 import { applyTheme, DEFAULT_THEME, loadTheme, saveTheme, type Theme } from './theme'
@@ -63,6 +64,13 @@ export default function App() {
     const [editMode, setEditMode] = useState(false)
     const [cascade, setCascade] = useState<Cascade | null>(null)
     const [orphan, setOrphan] = useState<Orphan | null>(null)
+    // A concurrent-edit conflict on the open resource: the file changed elsewhere
+    // since we read it. Autosave pauses until the user reloads or overwrites.
+    const [conflict, setConflict] = useState<{ collection: string; slug: string; theirs: Resource } | null>(null)
+    const conflictRef = useRef(false)
+    useEffect(() => { conflictRef.current = !!conflict }, [conflict])
+    // Bumped to force the open editor to remount (e.g. after taking "theirs").
+    const [reloadNonce, setReloadNonce] = useState(0)
     const [modal, setModal] = useState<{ open: boolean; mode: 'new' | 'edit' }>({ open: false, mode: 'new' })
     const [theme, setTheme] = useState<Theme>(loadTheme)
     const [settings, setSettings] = useState<AppSettings>(loadSettings)
@@ -206,12 +214,19 @@ export default function App() {
         setStatus('edited')
         if (saveTimer.current) window.clearTimeout(saveTimer.current)
         saveTimer.current = window.setTimeout(async () => {
+            // Hold off while a conflict is unresolved - don't keep re-clobbering.
+            if (conflictRef.current) return
             setStatus('saving')
             try {
                 const next = await api.save(c, resource.slug, resource)
                 setLists((cur) => ({ ...cur, [c]: cur[c].map((r) => (r.slug === resource.slug ? next : r)) }))
                 setStatus('saved')
-            } catch { setStatus('edited') }
+            } catch (e) {
+                if (e instanceof ConflictError) {
+                    setConflict({ collection: c, slug: resource.slug, theirs: e.current })
+                }
+                setStatus('edited')
+            }
         }, 650)
     }, [])
 
@@ -230,6 +245,35 @@ export default function App() {
         },
         [active, collection, queueSave],
     )
+
+    // Take the server's version: replace local state and remount the editor.
+    const resolveConflictReload = useCallback(() => {
+        if (!conflict) return
+        const { collection: c, theirs } = conflict
+        setLists((cur) => ({ ...cur, [c]: (cur[c] ?? []).map((r) => (r.slug === theirs.slug ? theirs : r)) }))
+        setConflict(null)
+        setReloadNonce((n) => n + 1)
+        setStatus('saved')
+    }, [conflict])
+
+    // Keep my version: re-save (current edits) with the version cleared to force
+    // past the check.
+    const resolveConflictOverwrite = useCallback(async () => {
+        if (!conflict) return
+        const { collection: c, slug } = conflict
+        const mine = (lists[c] ?? []).find((r) => r.slug === slug)
+        setConflict(null)
+        if (!mine) return
+        setStatus('saving')
+        try {
+            const next = await api.save(c, slug, { ...mine, version: undefined })
+            setLists((cur) => ({ ...cur, [c]: cur[c].map((r) => (r.slug === slug ? next : r)) }))
+            setStatus('saved')
+        } catch (e) {
+            if (e instanceof ConflictError) setConflict({ collection: c, slug, theirs: e.current })
+            else setStatus('edited')
+        }
+    }, [conflict, lists])
 
     // How many resources have unpublished (staged) changes, across collections.
     const stagedCount = useMemo(
@@ -472,7 +516,7 @@ export default function App() {
     )
 
     const select = useCallback((slug: string) => {
-        setSel((cur) => ({ ...cur, [collection]: slug })); writeHash(collection, slug); setEditMode(false); setStatus('idle'); setDrawer(false)
+        setSel((cur) => ({ ...cur, [collection]: slug })); writeHash(collection, slug); setEditMode(false); setStatus('idle'); setDrawer(false); setConflict(null)
     }, [collection])
 
     const switchCollection = useCallback((c: string) => {
@@ -509,6 +553,13 @@ export default function App() {
         <DataContext.Provider value={dataApi}>
         <UploadContext.Provider value={{ externalEnabled: caps?.upload.external ?? false, collection, slug: activeSlug ?? '' }}>
         <SyncBanner status={sync} retrying={syncRetrying} onRetry={retrySync} />
+        {conflict && active && (
+            <ConflictBanner
+                title={view ? view.feedTitle(active) : conflict.slug}
+                onReload={resolveConflictReload}
+                onOverwrite={resolveConflictOverwrite}
+            />
+        )}
         <div className={'app' + (drawer ? ' app--drawer' : '')}>
             <div className="app__nav">
                 <CollectionRail views={views} active={collection} onSelect={switchCollection} onSettings={() => setSettingsOpen(true)} />
@@ -536,7 +587,7 @@ export default function App() {
                 />
                 <div className={'app__canvas' + (collection === 'posts' ? '' : ' app__canvas--form')}>
                     {active && view && Experience ? (
-                        <Experience resource={active} def={view.def} map={view.map} references={view.references} onPatch={patch} onEditTitle={() => setModal({ open: true, mode: 'edit' })} onRename={rename} onDelete={deleteActive} onOpenRef={openResource} editable={editMode} />
+                        <Experience key={`reload-${reloadNonce}`} resource={active} def={view.def} map={view.map} references={view.references} onPatch={patch} onEditTitle={() => setModal({ open: true, mode: 'edit' })} onRename={rename} onDelete={deleteActive} onOpenRef={openResource} editable={editMode} />
                     ) : (
                         <div className="empty">{view ? `Nothing here yet. Press “${view.newLabel}”.` : 'Loading…'}</div>
                     )}

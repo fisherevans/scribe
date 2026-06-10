@@ -1,6 +1,7 @@
 package content
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -196,6 +197,44 @@ func TestReadCacheNeverServesStaleOrCorrupt(t *testing.T) {
 	}
 	if r4, _ := s.Read("posts", "p"); r4.Fields["title"] != "Tlhre" {
 		t.Fatalf("external change not reflected: %v", r4.Fields["title"])
+	}
+}
+
+func TestWriteConflictDetection(t *testing.T) {
+	s := newTestStore(t)
+	base := Resource{Slug: "p", Fields: map[string]any{"title": "One", "date": "2026-01-01"}, Body: "a\n"}
+	if err := s.Write("posts", base); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := s.Read("posts", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Version == "" {
+		t.Fatal("expected a version on read")
+	}
+
+	// A concurrent writer changes the file out from under us.
+	other := Resource{Slug: "p", Fields: map[string]any{"title": "Theirs", "date": "2026-01-01"}, Body: "b\n"}
+	if err := s.Write("posts", other); err != nil { // no Version -> unchecked write
+		t.Fatal(err)
+	}
+
+	// Saving with the now-stale base version must be refused.
+	stale := *loaded
+	stale.Fields = map[string]any{"title": "Mine", "date": "2026-01-01"}
+	stale.Body = "c\n"
+	if err := s.Write("posts", stale); !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected ErrConflict, got %v", err)
+	}
+
+	// Clearing the version forces the overwrite through.
+	stale.Version = ""
+	if err := s.Write("posts", stale); err != nil {
+		t.Fatalf("forced overwrite should succeed, got %v", err)
+	}
+	if got, _ := s.Read("posts", "p"); got.Fields["title"] != "Mine" {
+		t.Fatalf("overwrite not applied: %v", got.Fields["title"])
 	}
 }
 

@@ -12,6 +12,9 @@ export interface Resource {
     state: ResourceState
     dirty: boolean
     notes: string
+    // Content hash of the on-disk file when this was read. Echoed on save for
+    // optimistic concurrency: the server returns 409 if the file changed since.
+    version?: string
 }
 
 // ---- schema (from /api/schema) -----------------------------------------
