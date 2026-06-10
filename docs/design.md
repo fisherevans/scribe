@@ -379,13 +379,15 @@ into frontmatter (pollutes files, fights the schema).
     `SCRIBE_UPLOAD_NAME`, `SCRIBE_UPLOAD_EXT`, `SCRIBE_UPLOAD_TYPE`, and
     `SCRIBE_UPLOAD_SLUG` (the post, usable as a key namespace) in the env. The
     command's stdout (trimmed) is the URL. This is the swappable hook - R2, S3,
-    scp, any script - same swappability principle as auth.
-    [deploy/upload-plugin/](../deploy/upload-plugin/) is the R2 reference (script
-    + deploy overlay): it
-    mirrors the nottingham-bot `!upload` convention (S3 PutObject to the
-    media-fisher-sh bucket, key `<slug>/<YYYY/MM/DD>/<name>`, explicit
-    ContentType, returns the `media.fisher.sh` URL). Offered in the UI only when
-    configured (`GET /api/capabilities`).
+    scp, any script - same swappability principle as auth. The image ships
+    `rclone` + reference uploaders ([deploy/uploaders/](../deploy/uploaders/)) so
+    the common stores are config-only (`SCRIBE_UPLOADER=s3` + `SCRIBE_S3_*`); a
+    custom uploader is a mounted script with `SCRIBE_UPLOAD_CMD` pointed at it, no
+    rebuild. The bundled `s3` uploader mirrors the nottingham-bot `!upload`
+    convention (object PUT to the media-fisher-sh bucket, key
+    `<slug>/<YYYY/MM/DD>/<name>`, explicit ContentType, returns the
+    `media.fisher.sh` URL). Offered in the UI only when configured
+    (`GET /api/capabilities`).
   - local / "page content" (`dest=local`): the file is copied into the site's
     media input dir (from `.pages.yml`'s `media` block), grouped per-post under
     `<input>/<slug>/`, and the matching output URL is returned. serveRoot serves

@@ -29,4 +29,17 @@ if [ ! -e "$SCRIBE_REPO/.git" ]; then
     git clone "https://github.com/${SCRIBE_BLOG_REPO}.git" "$SCRIBE_REPO"
 fi
 
+# Optional: select a bundled upload plugin by name (e.g. SCRIBE_UPLOADER=s3)
+# instead of spelling out the script path. An explicit SCRIBE_UPLOAD_CMD wins.
+# See deploy/uploaders/README.md.
+if [ -z "${SCRIBE_UPLOAD_CMD:-}" ] && [ -n "${SCRIBE_UPLOADER:-}" ]; then
+    cmd="/usr/local/share/scribe/uploaders/${SCRIBE_UPLOADER}.sh"
+    if [ ! -x "$cmd" ]; then
+        echo "scribe: unknown SCRIBE_UPLOADER='${SCRIBE_UPLOADER}' (no $cmd)" >&2
+        exit 1
+    fi
+    export SCRIBE_UPLOAD_CMD="$cmd"
+    echo "scribe: upload plugin = ${SCRIBE_UPLOADER} ($cmd)"
+fi
+
 exec /scribe "$@"

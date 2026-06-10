@@ -17,7 +17,7 @@ Releases are tag-driven. Pushing a `vX.Y.Z` git tag triggers the
 `ghcr.io/fisherevans/scribe:vX.Y.Z` (plus `:latest` / `:<branch>` / `:sha-...`).
 The deployment pins an explicit tag.
 
-Current release: **v0.1.2**.
+Current release: **v0.1.3**.
 
 1. Confirm the image is built and pushed:
    ```sh
@@ -43,136 +43,114 @@ The `scribe-secrets` Secret (the `GIT_TOKEN` used to clone/push the blog repo) i
 unchanged and materialized out-of-band from Bitwarden (the `make configure-scribe`
 pattern) - nothing to do here unless rotating it.
 
-> **Note on uploads:** the base image is upload-agnostic. With no upload command
-> configured, the editor's upload button copies into the site media dir, but in
-> the deployed git-staging model that file is never committed/published - so for
-> working media uploads you want Part B. Writing posts and pasting existing
-> `media.fisher.sh` URLs works on the base image with nothing extra.
+> **Note on uploads:** the base image is upload-agnostic *until configured*. With
+> no upload plugin selected, the editor's upload button copies into the site media
+> dir, but in the deployed git-staging model that file is never committed/published
+> - so for working media uploads you want Part B. As of v0.1.3 Part B is
+> configuration only (the image ships `rclone` + the uploader scripts); no derived
+> image. Writing posts and pasting existing `media.fisher.sh` URLs works with
+> nothing extra.
 
 ---
 
-## Part B - Enable R2 media uploads (addendum)
+## Part B - Enable media uploads (configuration only)
 
-scribe's image upload is a **swappable hook**, not a built-in R2 integration
-(same principle as auth). When `SCRIBE_UPLOAD_CMD` is set, scribe spools each
-uploaded image to a temp file, runs that command, and takes the URL the command
-prints on stdout. The base image ships no uploader; you layer one in.
+scribe's image upload is a **swappable hook**, not a built-in integration (same
+principle as auth). When `SCRIBE_UPLOAD_CMD` is set, scribe spools each uploaded
+image to a temp file, runs that command, and takes the URL the command prints on
+stdout. With nothing set, the editor copies into the site media dir instead -
+inert in the git-staging deploy, since that binary is never committed.
 
-This mirrors the local dev setup and the `!upload` Discord bot: a plain S3
-`PutObject` against the `media-fisher-sh` R2 bucket, returning a
-`media.fisher.sh` URL.
+The scribe image **ships `rclone` plus the reference uploaders** (see
+[`deploy/uploaders/`](uploaders/README.md)) baked in at
+`/usr/local/share/scribe/uploaders/`. So enabling uploads is configuration only -
+no derived image, no `docker build`. (Pre-v0.1.3 this needed a `scribe-r2` overlay
+image; that's gone.) The bundled `s3` uploader is a plain object PUT to any
+S3-compatible store; here, the `media-fisher-sh` R2 bucket, returning
+`media.fisher.sh` URLs - the same bucket + key scheme as the `!upload` Discord
+bot.
 
-### B.1 The uploader script
+### B.1 Select the uploader + supply config
 
-[`deploy/upload-plugin/upload-r2.sh`](upload-plugin/upload-r2.sh) is the
-reference implementation. Contract scribe gives it (per upload, via env):
+Two env to turn it on, plus the storage credentials:
 
-| var | meaning |
-|---|---|
-| `SCRIBE_UPLOAD_FILE` | local path to the spooled file |
-| `SCRIBE_UPLOAD_NAME` | chosen filename incl. extension (already slugified) |
-| `SCRIBE_UPLOAD_EXT`  | lowercased extension incl. dot |
-| `SCRIBE_UPLOAD_TYPE` | content type |
-| `SCRIBE_UPLOAD_SLUG` | the post being edited (used as the R2 key namespace) |
-
-It must print the public URL to **stdout** and nothing else (diagnostics to
-stderr). What the script does:
-
-- key = `<namespace>/<YYYY/MM/DD>/<name>`, namespace = `SCRIBE_UPLOAD_SLUG` (or
-  `R2_NAMESPACE` override, or `unsorted`), date in UTC. e.g.
-  `a-shaker-side-table/2026/06/09/hero-shot.png`.
-- `aws s3api put-object` against the R2 endpoint with an explicit
-  `--content-type` (so R2 serves images inline, not as a download).
-- prints `https://<R2_PUBLIC_URL>/<key>` (prepends `https://` if the configured
-  public URL is a bare domain).
-
-Its R2 config (from env - the secret below):
+- `SCRIBE_UPLOADER=s3` - selects the bundled `s3.sh` (the entrypoint resolves the
+  name to the script path; an explicit `SCRIBE_UPLOAD_CMD` would override).
+- the `SCRIBE_S3_*` config below, injected from a Secret.
 
 | env | Bitwarden field (`nottingham-cloud`) | value |
 |---|---|---|
-| `R2_ENDPOINT` | `r2-endpoint` | `https://<account-id>.r2.cloudflarestorage.com` (account-scoped, not bucket-suffixed) |
-| `R2_ACCESS_KEY_ID` | `r2-access-key-id` | R2 S3 access key |
-| `R2_SECRET_ACCESS_KEY` | `r2-secret-access-key` | R2 S3 secret |
-| `R2_BUCKET` | `r2-bucket-name` | `media-fisher-sh` |
-| `R2_PUBLIC_URL` | `r2-public-url` | `media.fisher.sh` (bare domain; script adds the scheme) |
+| `SCRIBE_S3_ENDPOINT` | `r2-endpoint` | `https://<account-id>.r2.cloudflarestorage.com` (account-scoped; empty = AWS S3) |
+| `SCRIBE_S3_ACCESS_KEY_ID` | `r2-access-key-id` | S3 access key |
+| `SCRIBE_S3_SECRET_ACCESS_KEY` | `r2-secret-access-key` | S3 secret |
+| `SCRIBE_S3_BUCKET` | `r2-bucket-name` | `media-fisher-sh` |
+| `SCRIBE_S3_PUBLIC_BASE` | `r2-public-url` | `media.fisher.sh` (bare domain; the script adds the scheme) |
 
-These are the same five values the `!upload` bot uses.
+Optional: `SCRIBE_S3_REGION` (default `auto`), `SCRIBE_S3_PROVIDER` (default
+`Other`; `AWS`/`Cloudflare`/`Minio`/...), `SCRIBE_S3_PREFIX` (key namespace
+override; default is the post slug). Keys are `<namespace>/<YYYY/MM/DD>/<name>`,
+UTC date, e.g. `a-shaker-side-table/2026/06/10/hero-shot.png`. These are the same
+five values the `!upload` bot uses; see [`uploaders/s3.sh`](uploaders/s3.sh).
 
-### B.2 Build the overlay image
-
-The base image is bare alpine + git (no S3 client). Layer in `aws-cli` + the
-script with [`deploy/upload-plugin/Dockerfile`](upload-plugin/Dockerfile):
-
-```sh
-docker build \
-  -t ghcr.io/fisherevans/scribe-r2:v0.1.2 \
-  --build-arg SCRIBE_IMAGE=ghcr.io/fisherevans/scribe:v0.1.2 \
-  deploy/upload-plugin
-docker push ghcr.io/fisherevans/scribe-r2:v0.1.2
-```
-
-The overlay inherits the base entrypoint and bakes `SCRIBE_UPLOAD_CMD=
-/plugins/upload-r2.sh`. (`aws-cli` pulls Python; if image size matters, swap to
-`apk add rclone` + an `rclone copyto` call - single static binary.)
-
-> Optionally fold this into the CI workflow as a second build step keyed on the
-> same tag, so `scribe-r2:vX.Y.Z` publishes alongside `scribe:vX.Y.Z`.
-
-### B.3 Materialize the R2 secret from Bitwarden
+### B.2 Materialize the secret from Bitwarden
 
 Same pattern as `scribe-secrets` - pull from the `nottingham-cloud` BW item, do
-not commit values. Example shape in
-[`deploy/upload-plugin/secret.example.yaml`](upload-plugin/secret.example.yaml):
+not commit values. In nottingham-cloud this is `make configure-scribe-r2` (it
+emits the `SCRIBE_S3_*` keys below). The equivalent one-liner:
 
 ```sh
 kubectl -n scribe create secret generic scribe-r2 \
-  --from-literal=R2_ENDPOINT="$(scripts/bw-field.sh nottingham-cloud r2-endpoint)" \
-  --from-literal=R2_ACCESS_KEY_ID="$(scripts/bw-field.sh nottingham-cloud r2-access-key-id)" \
-  --from-literal=R2_SECRET_ACCESS_KEY="$(scripts/bw-field.sh nottingham-cloud r2-secret-access-key)" \
-  --from-literal=R2_BUCKET="$(scripts/bw-field.sh nottingham-cloud r2-bucket-name)" \
-  --from-literal=R2_PUBLIC_URL="$(scripts/bw-field.sh nottingham-cloud r2-public-url)"
+  --from-literal=SCRIBE_S3_ENDPOINT="$(scripts/bw-field.sh nottingham-cloud r2-endpoint)" \
+  --from-literal=SCRIBE_S3_ACCESS_KEY_ID="$(scripts/bw-field.sh nottingham-cloud r2-access-key-id)" \
+  --from-literal=SCRIBE_S3_SECRET_ACCESS_KEY="$(scripts/bw-field.sh nottingham-cloud r2-secret-access-key)" \
+  --from-literal=SCRIBE_S3_BUCKET="$(scripts/bw-field.sh nottingham-cloud r2-bucket-name)" \
+  --from-literal=SCRIBE_S3_PUBLIC_BASE="$(scripts/bw-field.sh nottingham-cloud r2-public-url)"
 ```
 
-(Run `scripts/bw-unlock.sh` first if the BW session isn't live. Better: add a
-`configure-scribe-r2` make target mirroring `configure-scribe` so this is
-reproducible.)
+(Run `scripts/bw-unlock.sh` first if the BW session isn't live.)
 
-### B.4 Point the deployment at the overlay + secret
+### B.3 Point the deployment at it
 
-Run the overlay image and inject the R2 env from the secret. See
-[`deploy/upload-plugin/deployment.patch.yaml`](upload-plugin/deployment.patch.yaml)
-for the exact patch - either apply it as a kustomize overlay over `deploy/k3s`,
-or set the equivalent on the live Deployment:
+No image change - the base image already has the uploader. Add to the `scribe`
+container's `env`:
 
-- `image: ghcr.io/fisherevans/scribe-r2:v0.1.2`
-- five `R2_*` env vars `valueFrom` the `scribe-r2` secret
+- `SCRIBE_UPLOADER` = `s3` (plain value)
+- the five `SCRIBE_S3_*` vars `valueFrom` the `scribe-r2` secret
 
-`SCRIBE_UPLOAD_CMD` is baked into the overlay image, so it doesn't need setting
-here. Then `kubectl apply` and roll out as in Part A.
+Then `kubectl apply -k deploy/k3s` and roll out as in Part A.
 
-### B.5 Verify
+### B.4 Verify
 
-In the editor (or via the API), upload a test image and confirm the round trip,
-then clean up the throwaway object:
+`GET /api/capabilities` reports `{"upload":{"external":true}}` once configured.
+Upload a test image, confirm the round trip, then clean up the throwaway object:
 
 ```sh
-# the running pod, or any host with the R2 creds + aws-cli:
 url=$(curl -s -F 'file=@/tmp/test.png;filename=test.png' \
         -F dest=external -F name=smoketest -F slug=devops-check \
         http://<scribe>/api/upload | jq -r .url)
 echo "$url"                         # https://media.fisher.sh/devops-check/<date>/smoketest.png
 curl -sI "$url" | head -1           # expect 200, content-type image/png
 
-# cleanup:
-AWS_ACCESS_KEY_ID=$R2_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=$R2_SECRET_ACCESS_KEY \
-AWS_DEFAULT_REGION=auto aws s3api delete-object \
-  --endpoint-url "$R2_ENDPOINT" --bucket "$R2_BUCKET" \
-  --key "devops-check/<date>/smoketest.png"
+# cleanup (rclone is in the pod; reuse the SCRIBE_S3_* env):
+kubectl -n scribe exec deploy/scribe -- sh -c '
+  export RCLONE_CONFIG=/dev/null RCLONE_CONFIG_DST_TYPE=s3 RCLONE_CONFIG_DST_PROVIDER=Other \
+    RCLONE_CONFIG_DST_ACCESS_KEY_ID="$SCRIBE_S3_ACCESS_KEY_ID" \
+    RCLONE_CONFIG_DST_SECRET_ACCESS_KEY="$SCRIBE_S3_SECRET_ACCESS_KEY" \
+    RCLONE_CONFIG_DST_REGION=auto RCLONE_CONFIG_DST_ENDPOINT="$SCRIBE_S3_ENDPOINT"
+  rclone deletefile --s3-no-check-bucket "DST:$SCRIBE_S3_BUCKET/devops-check/<date>/smoketest.png"'
 ```
 
 (A just-deleted object can still 200 briefly from Cloudflare's CDN cache - that's
 the cache, not the origin.)
 
-Once the toggle shows up, the editor's image modal offers **External CDN** vs
-**Page content**; External runs this script and drops the `media.fisher.sh` URL
-straight into the post.
+In the editor's image modal this is the **External CDN** option; it runs the
+uploader and drops the `media.fisher.sh` URL straight into the post.
+
+### B.5 A different store, or your own uploader
+
+`SCRIBE_UPLOADER=s3` with no `SCRIBE_S3_ENDPOINT` (and `SCRIBE_S3_PROVIDER=AWS`)
+is plain AWS S3; the same script covers B2, MinIO, Wasabi, etc. For anything the
+bundled scripts don't cover, mount your own script (ConfigMap) and point
+`SCRIBE_UPLOAD_CMD` at it - no rebuild; `rclone` is on `PATH`. See
+[`deploy/uploaders/README.md`](uploaders/README.md) for the contract and
+examples.

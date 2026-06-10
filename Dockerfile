@@ -25,9 +25,15 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /scribe ./cmd/scribe
 FROM alpine:3.20
 # git is required (scribe shells out to it); openssh-client is not needed since
 # pushes use an HTTPS token credential helper (see docker-entrypoint.sh).
-RUN apk add --no-cache git tzdata ca-certificates
+# rclone is the bundled object-store client for the upload plugins (a single
+# static binary - supports S3/R2/B2/GCS/etc.). It makes enabling uploads a
+# config-only action: no derived image needed just to add an S3 client. See
+# deploy/uploaders/README.md.
+RUN apk add --no-cache git tzdata ca-certificates rclone
 COPY --from=build /scribe /scribe
 COPY deploy/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# Bundled upload plugins (selected at runtime via SCRIBE_UPLOADER).
+COPY deploy/uploaders/ /usr/local/share/scribe/uploaders/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/share/scribe/uploaders/*.sh
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
