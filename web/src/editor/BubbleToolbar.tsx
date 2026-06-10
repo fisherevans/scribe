@@ -53,7 +53,10 @@ export function BubbleToolbar({ editor }: { editor: Editor }) {
             editor={editor}
             tippyOptions={{ duration: 120, onHidden: () => setLinkMode(false) }}
             shouldShow={({ editor, from, to }) =>
-                editor.isEditable && (from !== to || editor.isActive('link')) && !editor.isActive('codeBlock') && !editor.isActive('image')
+                // Show on a selection, on a link, or whenever the cursor is in a
+                // heading (so its level is visible and changeable even with no
+                // selection). Never over code/image blocks.
+                editor.isEditable && (from !== to || editor.isActive('link') || editor.isActive('heading')) && !editor.isActive('codeBlock') && !editor.isActive('image')
             }
         >
             {linkMode ? (
@@ -89,6 +92,26 @@ export function BubbleToolbar({ editor }: { editor: Editor }) {
                 </div>
             ) : (
                 <div className="bubble">
+                    {[1, 2, 3].map((level) => (
+                        <button
+                            key={level}
+                            className={'bubble__btn bubble__btn--lvl' + (editor.isActive('heading', { level }) ? ' is-active' : '')}
+                            type="button"
+                            onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().setHeading({ level: level as 1 | 2 | 3 }).run() }}
+                            title={`heading ${level}`}
+                        >
+                            H{level}
+                        </button>
+                    ))}
+                    <button
+                        className={'bubble__btn bubble__btn--lvl' + (editor.isActive('paragraph') ? ' is-active' : '')}
+                        type="button"
+                        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().setParagraph().run() }}
+                        title="body text"
+                    >
+                        ¶
+                    </button>
+                    <span className="bubble__sep" />
                     <button className={'bubble__btn' + (editor.isActive('bold') ? ' is-active' : '')} type="button" onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBold().run() }} title="bold">
                         <b>B</b>
                     </button>

@@ -19,7 +19,7 @@ import { LinkShortcut } from './BubbleToolbar'
 // place means the tests exercise exactly the schema the editor uses.
 export function editorExtensions() {
     return [
-        StarterKit.configure({ heading: { levels: [2, 3, 4] }, codeBlock: false }),
+        StarterKit.configure({ heading: { levels: [1, 2, 3, 4] }, codeBlock: false }),
         CodeBlock,
         Placeholder.configure({
             includeChildren: false,

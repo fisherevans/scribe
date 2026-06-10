@@ -421,16 +421,17 @@ button { font-family: inherit; cursor: pointer; }
 .prose:focus { outline: none; }
 .prose > * { margin: 0 0 1.15rem; }
 .prose p { font-weight: 400; }
-.prose h2, .prose h3, .prose h4 {
+.prose h1, .prose h2, .prose h3, .prose h4 {
     font-family: var(--serif-display);
-    font-weight: 520;
-    line-height: 1.2;
-    letter-spacing: -0.01em;
+    font-weight: 540;
+    line-height: 1.15;
+    letter-spacing: -0.015em;
     margin: 2rem 0 0.7rem;
 }
-.prose h2 { font-size: 1.7rem; }
-.prose h3 { font-size: 1.35rem; }
-.prose h4 { font-size: 1.12rem; }
+.prose h1 { font-size: 2.05rem; }
+.prose h2 { font-size: 1.8rem; }
+.prose h3 { font-size: 1.5rem; }
+.prose h4 { font-size: 1.22rem; }
 .prose a { color: var(--brass-deep); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
 .prose em { font-style: italic; }
 .prose strong { font-weight: 600; }
@@ -654,6 +655,7 @@ button { font-family: inherit; cursor: pointer; }
 .bubble__btn:hover { background: var(--desk-3); color: var(--ink-on-desk); }
 .bubble__btn.is-active { background: var(--brass-soft); color: #e0a64f; }
 .bubble__btn--danger:hover { color: var(--rose); }
+.bubble__btn--lvl { font-size: 0.72rem; letter-spacing: 0.02em; }
 .bubble__sep { width: 1px; height: 1.1rem; background: var(--desk-line); margin: 0 0.2rem; }
 .bubble--link { padding: 0.25rem; }
 .bubble__url {
@@ -1340,6 +1342,27 @@ button.chip__label:hover { text-decoration: underline; }
 }
 .syncbanner__btn:hover:not(:disabled) { background: rgba(0, 0, 0, 0.34); }
 .syncbanner__btn:disabled { opacity: 0.6; cursor: default; }
+
+/* Concurrent-edit conflict on the open resource (autosave paused). */
+.conflictbanner {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 201;
+    display: flex; align-items: center; gap: 0.8rem;
+    padding: 0.6rem 1rem;
+    background: var(--rose); color: #fff;
+    font-size: 0.84rem;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.conflictbanner__msg { flex: 1; line-height: 1.35; }
+.conflictbanner__msg strong { font-weight: 600; }
+.conflictbanner__actions { flex: none; display: flex; gap: 0.5rem; }
+.conflictbanner__btn {
+    font-family: var(--mono); font-size: 0.72rem;
+    background: rgba(0, 0, 0, 0.22); color: #fff;
+    border: none; border-radius: 0.4rem; padding: 0.35rem 0.75rem; cursor: pointer;
+}
+.conflictbanner__btn:hover { background: rgba(0, 0, 0, 0.34); }
+.conflictbanner__btn--primary { background: #fff; color: var(--rose); font-weight: 600; }
+.conflictbanner__btn--primary:hover { background: rgba(255, 255, 255, 0.85); }
 
 @media (prefers-reduced-motion: reduce) {
     * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

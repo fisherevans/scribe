@@ -23,8 +23,9 @@ interface Item {
 // "custom & embeds" are the structured/opaque content types. New custom
 // content (a provider embed, a new template) is one more entry here.
 const ITEMS: Item[] = [
-    { group: 'Blocks', title: 'Heading', hint: 'Section title', glyph: 'H', run: (e, r) => e.chain().focus().deleteRange(r).setNode('heading', { level: 2 }).run() },
-    { group: 'Blocks', title: 'Subheading', hint: 'Smaller title', glyph: 'h', run: (e, r) => e.chain().focus().deleteRange(r).setNode('heading', { level: 3 }).run() },
+    { group: 'Blocks', title: 'Heading 1', hint: 'Top-level (#)', glyph: 'H1', run: (e, r) => e.chain().focus().deleteRange(r).setNode('heading', { level: 1 }).run() },
+    { group: 'Blocks', title: 'Heading 2', hint: 'Section (##)', glyph: 'H2', run: (e, r) => e.chain().focus().deleteRange(r).setNode('heading', { level: 2 }).run() },
+    { group: 'Blocks', title: 'Heading 3', hint: 'Subsection (###)', glyph: 'H3', run: (e, r) => e.chain().focus().deleteRange(r).setNode('heading', { level: 3 }).run() },
     { group: 'Blocks', title: 'Text', hint: 'Plain paragraph', glyph: '¶', run: (e, r) => e.chain().focus().deleteRange(r).setNode('paragraph').run() },
     { group: 'Blocks', title: 'Bulleted list', hint: 'Unordered', glyph: '•', run: (e, r) => e.chain().focus().deleteRange(r).toggleBulletList().run() },
     { group: 'Blocks', title: 'Numbered list', hint: 'Ordered', glyph: '1.', run: (e, r) => e.chain().focus().deleteRange(r).toggleOrderedList().run() },
