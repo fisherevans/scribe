@@ -13,6 +13,7 @@ import { PublishSheet } from './components/PublishSheet'
 import { SettingsPanel } from './components/SettingsPanel'
 import { SetupWizard } from './components/SetupWizard'
 import { CascadeDialog, type Cascade } from './components/CascadeDialog'
+import { OrphanDialog, type Orphan } from './components/OrphanDialog'
 import { PublishReview, type PublishPhase } from './components/PublishReview'
 import { SyncBanner } from './components/SyncBanner'
 import type { Capabilities, PublishChange, SyncStatus } from './api'
@@ -21,9 +22,12 @@ import { applyTheme, DEFAULT_THEME, loadTheme, saveTheme, type Theme } from './t
 import { loadSettings, saveSettings, liveUrl, type AppSettings } from './settings'
 import { slugify, uniqueSlug } from './slug'
 
-const loadRail = () => {
+// A saved rail width (rem), or null to use the responsive CSS default
+// (clamp on --rail-w) - so by default the feed scales with the screen, and a
+// drag-to-resize pins an explicit width.
+const loadRail = (): number | null => {
     const v = parseFloat(localStorage.getItem('scribe-rail') || '')
-    return Number.isFinite(v) ? v : 19
+    return Number.isFinite(v) ? v : null
 }
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -58,6 +62,7 @@ export default function App() {
     const [setupOpen, setSetupOpen] = useState(false)
     const [editMode, setEditMode] = useState(false)
     const [cascade, setCascade] = useState<Cascade | null>(null)
+    const [orphan, setOrphan] = useState<Orphan | null>(null)
     const [modal, setModal] = useState<{ open: boolean; mode: 'new' | 'edit' }>({ open: false, mode: 'new' })
     const [theme, setTheme] = useState<Theme>(loadTheme)
     const [settings, setSettings] = useState<AppSettings>(loadSettings)
@@ -86,7 +91,7 @@ export default function App() {
     const docTitle = view && active ? `${view.feedTitle(active)} · ${kindOf(view)} · scribe` : view ? `${view.label} · scribe` : 'scribe'
     useEffect(() => { document.title = docTitle }, [docTitle])
 
-    // Read-only data access for the reference picker etc.
+    // Read-only data access for the reference picker, tag experience, etc.
     const dataApi = useMemo<DataApi>(() => ({
         list: (c) => lists[c] ?? [],
         labelFor: (c, slug) => {
@@ -94,7 +99,43 @@ export default function App() {
             const r = (lists[c] ?? []).find((x) => x.slug === slug)
             return r && v ? v.feedTitle(r) : slug
         },
+        referencers: (target, slug) => {
+            const out: { collection: string; slug: string; field: string }[] = []
+            for (const v of views) {
+                for (const [role, t] of Object.entries(v.references)) {
+                    if (t !== target) continue
+                    const field = v.map[role]
+                    if (!field) continue
+                    for (const r of lists[v.name] ?? []) {
+                        if (flist(r, field).includes(slug)) out.push({ collection: v.name, slug: r.slug, field })
+                    }
+                }
+            }
+            return out
+        },
     }), [lists, views])
+
+    // For a collection that is a reference target (e.g. tags), how many resources
+    // reference each slug, plus slugs referenced by content but with no resource
+    // of their own ("undefined" - loose ends to define or clean up). Null when the
+    // active collection isn't referenced by anything.
+    const refUsage = useMemo(() => {
+        const targets = new Set<string>()
+        for (const v of views) for (const t of Object.values(v.references)) targets.add(t)
+        if (!targets.has(collection)) return null
+        const counts = new Map<string, number>()
+        for (const v of views) {
+            for (const [role, t] of Object.entries(v.references)) {
+                if (t !== collection) continue
+                const field = v.map[role]
+                if (!field) continue
+                for (const r of lists[v.name] ?? []) for (const s of flist(r, field)) counts.set(s, (counts.get(s) ?? 0) + 1)
+            }
+        }
+        const defined = new Set((lists[collection] ?? []).map((r) => r.slug))
+        const undefinedSlugs = [...counts.keys()].filter((s) => !defined.has(s)).sort((a, b) => (counts.get(b)! - counts.get(a)!) || a.localeCompare(b))
+        return { counts, undefinedSlugs }
+    }, [views, lists, collection])
 
     useEffect(() => { applyTheme(theme); saveTheme(theme) }, [theme])
     useEffect(() => saveSettings(settings), [settings])
@@ -120,7 +161,7 @@ export default function App() {
     // surface in view mode. Form experiences (tag, generic) are always editable.
     const formExp = view ? view.experience !== 'blog-post' : false
     useEffect(() => { document.body.classList.toggle('is-readonly', !editMode && !formExp) }, [editMode, formExp])
-    useEffect(() => { document.documentElement.style.setProperty('--rail-w', railW.current + 'rem') }, [])
+    useEffect(() => { if (railW.current != null) document.documentElement.style.setProperty('--rail-w', railW.current + 'rem') }, [])
 
     // Visual-viewport height (iOS keyboard).
     useEffect(() => {
@@ -339,8 +380,9 @@ export default function App() {
         for (const ref of refs) {
             const r = (lists[ref.collection] ?? []).find((x) => x.slug === ref.slug)
             if (!r) continue
-            const next = flist(r, ref.field)
+            const rewritten = flist(r, ref.field)
                 .flatMap((s) => (s === from ? (to ? [to] : []) : [s]))
+            const next = Array.from(new Set(rewritten)) // dedupe: reassigning into an existing slug
             const merged: Resource = { ...r, fields: { ...r.fields, [ref.field]: next } }
             const saved = await api.save(ref.collection, ref.slug, merged)
             setLists((cur) => ({ ...cur, [ref.collection]: cur[ref.collection].map((x) => (x.slug === ref.slug ? saved : x)) }))
@@ -384,6 +426,41 @@ export default function App() {
         setCollection(c); setSel((cur) => ({ ...cur, [c]: slug })); writeHash(c, slug)
         setEditMode(false); setDetails(false); setStatus('idle')
     }, [])
+
+    // Materialize a resource for a slug that's referenced by content but has no
+    // file yet (an "undefined" tag). Seeds a titleized name, then opens it.
+    const defineRef = useCallback(async (c: string, slug: string) => {
+        const v = views.find((x) => x.name === c)
+        if (!v) return
+        const nameField = v.map.title || v.map.name
+        const title = slug.replace(/-/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
+        const fresh: Resource = {
+            collection: c, slug, body: '', state: 'staged', dirty: false, notes: '',
+            fields: nameField ? { [nameField]: title } : {},
+        }
+        try {
+            const saved = await api.save(c, slug, fresh)
+            setLists((cur) => ({ ...cur, [c]: [saved, ...(cur[c] ?? [])] }))
+            openResource(c, slug)
+        } catch (e) { alert(`Couldn't create: ${e instanceof Error ? e.message : e}`) }
+    }, [views, openResource])
+
+    // Resolve an orphaned reference (a slug used by content with no resource):
+    // create it, reassign those references to another slug, or strip it.
+    const createOrphan = useCallback(async (c: string, slug: string) => {
+        setOrphan(null)
+        await defineRef(c, slug)
+    }, [defineRef])
+    const reassignOrphan = useCallback(async (c: string, slug: string, to: string) => {
+        setOrphan(null)
+        try { await updateReferencers(findReferencers(c, slug), slug, to) }
+        catch (e) { alert(`Couldn't reassign: ${e instanceof Error ? e.message : e}`) }
+    }, [findReferencers, updateReferencers])
+    const removeOrphan = useCallback(async (c: string, slug: string) => {
+        setOrphan(null)
+        try { await updateReferencers(findReferencers(c, slug), slug, null) }
+        catch (e) { alert(`Couldn't remove: ${e instanceof Error ? e.message : e}`) }
+    }, [findReferencers, updateReferencers])
 
     const onModalSubmit = useCallback(
         async (title: string, slug: string) => {
@@ -436,7 +513,7 @@ export default function App() {
             <div className="app__nav">
                 <CollectionRail views={views} active={collection} onSelect={switchCollection} onSettings={() => setSettingsOpen(true)} />
                 <div className="app__feed">
-                    {view && <Feed view={view} items={items} activeSlug={activeSlug} allTags={allTags} onSelect={select} onNew={onNew} />}
+                    {view && <Feed view={view} items={items} activeSlug={activeSlug} allTags={allTags} refUsage={refUsage} onSelect={select} onNew={onNew} onResolveUndefined={(c, slug) => setOrphan({ collection: c, slug })} />}
                 </div>
                 <div className="resizer" onPointerDown={startResize} title="drag to resize" />
             </div>
@@ -470,6 +547,7 @@ export default function App() {
                 <PublishSheet resource={active} map={view.map} references={view.references} def={view.def} open={details} onClose={() => setDetails(false)} onPatch={patch} onRename={rename} onDelete={deleteActive} onOpenRef={openResource} />
             )}
             <CascadeDialog cascade={cascade} onResolve={runCascade} onCancel={() => setCascade(null)} />
+            <OrphanDialog orphan={orphan} onCreate={createOrphan} onReassign={reassignOrphan} onRemove={removeOrphan} onCancel={() => setOrphan(null)} />
             <PublishReview
                 open={publishOpen}
                 diff={publishDiff}

@@ -28,7 +28,10 @@
     --serif-body: 'Newsreader', Georgia, serif;
     --mono: 'Spline Sans Mono', ui-monospace, monospace;
 
-    --rail-w: 19rem;
+    /* Feed rail: scales with the viewport by default (roomier on large screens,
+       never cramped), capped to the drag-resize max. A saved drag pins an
+       explicit width (JS sets --rail-w then). */
+    --rail-w: clamp(19rem, 24vw, 34rem);
     --measure: 40rem;
 }
 
@@ -194,6 +197,27 @@ button { font-family: inherit; cursor: pointer; }
     border-radius: 4px;
     padding: 0.08rem 0.36rem;
 }
+/* Reference count on a target card (e.g. a tag's usage): a subtle number pill to
+   the right of the title - secondary metadata, just "is it used." It wraps below
+   a long title rather than crowding it. Zero stands out as a loose end. */
+.card__titlerow { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; margin-bottom: 0.2rem; }
+.card__titlerow .card__title { margin-bottom: 0; }
+.refpill { flex: none; display: inline-block; min-width: 1.15rem; text-align: center; font-family: var(--mono); font-size: 0.62rem; line-height: 1.3; color: var(--ink-faint); background: var(--desk); border: 1px solid var(--desk-line); border-radius: 999px; padding: 0.05rem 0.4rem; }
+.refpill--zero { color: var(--rose); border-color: rgba(192, 125, 84, 0.4); }
+
+/* Undefined references: slugs used by content with no resource of their own.
+   Listed under the feed so the data has no loose ends. */
+.undef { margin-top: 1.3rem; padding-top: 0.9rem; border-top: 1px solid var(--desk-line); }
+.undef__head { font-family: var(--mono); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.14em; color: var(--rose); margin-bottom: 0.55rem; }
+.undef__hint { text-transform: none; letter-spacing: 0; color: var(--ink-faint); }
+.undef__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.undef__item { width: 100%; display: flex; align-items: center; gap: 0.5rem; text-align: left; background: var(--desk-2); border: 1px solid var(--desk-line); border-radius: 0.45rem; padding: 0.4rem 0.55rem; cursor: pointer; }
+.undef__item:hover:not(:disabled) { border-color: var(--brass-deep); }
+.undef__item:disabled { cursor: default; }
+.undef__slug { flex: 1; min-width: 0; font-family: var(--mono); font-size: 0.78rem; color: var(--ink-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.undef__count { font-family: var(--mono); font-size: 0.64rem; color: var(--ink-faint); }
+.undef__add { font-family: var(--mono); font-size: 0.62rem; color: var(--brass); opacity: 0; transition: opacity 0.12s; }
+.undef__item:hover .undef__add { opacity: 1; }
 
 /* ---- Top bar ------------------------------------------------------------ */
 .topbar {
@@ -351,26 +375,39 @@ button { font-family: inherit; cursor: pointer; }
 
 /* Inline document metadata (date / description / tags) between title and body. */
 .docmeta { margin: 0 0 0.9rem; }
-.docmeta--view .docmeta__byline { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.06em; color: var(--ink-faintest); margin-bottom: 0.4rem; }
-.docmeta--view .docmeta__lede { font-family: var(--serif-body); font-style: italic; font-size: 1.18rem; line-height: 1.5; color: var(--ink-soft); margin: 0; }
-.docmeta--edit { display: flex; flex-direction: column; gap: 0.5rem; padding: 0 0 0.7rem; border-bottom: 1px solid var(--paper-line); }
-.docmeta__row { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; }
-.docmeta__field { display: flex; align-items: center; gap: 0.5rem; flex: none; }
+
+/* View: date byline, a distinct description lede, then navigable tag chips,
+   with clear spacing and a rule that separates the header from the body. */
+.docmeta--view { margin: 0 0 1.6rem; padding-bottom: 1.1rem; border-bottom: 1px solid var(--paper-line); }
+.docmeta--view .docmeta__byline { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.06em; color: var(--ink-faint); margin-bottom: 0.6rem; }
+.docmeta--view .docmeta__lede { font-family: var(--serif-body); font-style: italic; font-size: 1.2rem; line-height: 1.55; color: var(--ink-soft); margin: 0; }
+.docmeta__tagrow { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.95rem; }
+.doctag { font-family: var(--mono); font-size: 0.72rem; color: var(--ink-mute); background: var(--brass-soft); border: 1px solid transparent; border-radius: 0.4rem; padding: 0.22rem 0.6rem; cursor: pointer; }
+.doctag:hover { border-color: var(--brass-deep); color: var(--ink); }
+
+/* Edit: labeled fields. Date + tags share a row, top-aligned (label over input),
+   description is its own labeled textbox below - so it all reads as one form. */
+.docmeta--edit { display: flex; flex-direction: column; gap: 0.85rem; padding: 0 0 0.95rem; margin-bottom: 1rem; border-bottom: 1px solid var(--paper-line); }
+.docmeta__row { display: flex; align-items: flex-start; gap: 1.3rem; flex-wrap: wrap; }
+.docmeta__field { display: flex; flex-direction: column; gap: 0.32rem; }
+.docmeta__field--date { flex: none; }
+.docmeta__field--tags { flex: 1 1 14rem; min-width: 0; }
 .docmeta__lbl { font-family: var(--mono); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-soft); }
-.docmeta__date { font-family: var(--mono); font-size: 0.82rem; color: var(--ink); background: var(--paper-2); border: 1px solid var(--paper-line); border-radius: 0.4rem; padding: 0.3rem 0.5rem; color-scheme: light; outline: none; }
+.docmeta__date { font-family: var(--mono); font-size: 0.82rem; color: var(--ink); background: var(--paper-2); border: 1px solid var(--paper-line); border-radius: 0.4rem; padding: 0.4rem 0.5rem; color-scheme: light; outline: none; }
 .docmeta__date:focus { border-color: var(--brass); }
-.docmeta__tags { flex: 1 1 12rem; min-width: 0; }
-.docmeta__desc { display: block; width: 100%; font-family: var(--serif-body); font-style: italic; font-size: 1.12rem; line-height: 1.45; color: var(--ink); background: transparent; border: none; border-left: 2px solid var(--paper-line); padding: 0.05rem 0 0.05rem 0.8rem; outline: none; resize: none; overflow: hidden; }
-.docmeta__desc:focus { border-left-color: var(--brass); }
-.docmeta__desc::placeholder { color: var(--ink-faintest); }
-/* ReferencePicker reads on parchment here, not the dark desk. */
-.docmeta__tags .chips { background: var(--paper-2); border-color: var(--paper-line); }
-.docmeta__tags .chips__input { color: var(--ink); }
-.docmeta__tags .chip { background: var(--brass-soft); color: var(--ink); }
-.docmeta__tags .chip__label { color: var(--ink); }
-.docmeta__tags .suggest { background: var(--paper-2); border-color: var(--paper-line); box-shadow: 0 12px 28px -12px rgba(0, 0, 0, 0.45); }
-.docmeta__tags .suggest__item { background: var(--paper); color: var(--ink-mute); border-color: var(--paper-line); }
-.docmeta__tags .suggest__item:hover { color: var(--ink); border-color: var(--brass-deep); }
+.docmeta__desc { display: block; width: 100%; box-sizing: border-box; font-family: var(--serif-body); font-size: 1.05rem; line-height: 1.5; color: var(--ink); background: var(--paper-2); border: 1px solid var(--paper-line); border-radius: 0.5rem; padding: 0.5rem 0.65rem; outline: none; resize: none; overflow: hidden; }
+.docmeta__desc:focus { border-color: var(--brass); }
+.docmeta__desc::placeholder { color: var(--ink-faintest); font-style: italic; }
+/* ReferencePicker reads on parchment here, not the dark desk. The chips box
+   fills the field width so its top edge aligns with the date input. */
+.docmeta__field--tags .refpicker { width: 100%; }
+.docmeta__field--tags .chips { background: var(--paper-2); border-color: var(--paper-line); }
+.docmeta__field--tags .chips__input { color: var(--ink); }
+.docmeta__field--tags .chip { background: var(--brass-soft); color: var(--ink); }
+.docmeta__field--tags .chip__label { color: var(--ink); }
+.docmeta__field--tags .suggest { background: var(--paper-2); border-color: var(--paper-line); box-shadow: 0 12px 28px -12px rgba(0, 0, 0, 0.45); }
+.docmeta__field--tags .suggest__item { background: var(--paper); color: var(--ink-mute); border-color: var(--paper-line); }
+.docmeta__field--tags .suggest__item:hover { color: var(--ink); border-color: var(--brass-deep); }
 
 /* The drag handle is a child of .page__body, positioned in the left gutter, and
    the extension hides it on mouseout of .page__body. padding-left + equal
@@ -838,9 +875,27 @@ body.is-readonly .drag-handle { display: none !important; }
 .ffield__input--area { resize: vertical; min-height: 4.75rem; }
 textarea.field__input { resize: vertical; }
 
-/* Tag slug: explicit edit-then-apply (renaming cascades to referencing posts). */
-.slugview { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
-.slugview__val { font-family: var(--mono); font-size: 0.9rem; color: var(--ink); background: var(--paper-2); border: 1px solid var(--paper-line); border-radius: 0.4rem; padding: 0.4rem 0.6rem; }
+/* Tag slug: explicit edit-then-apply (renaming cascades to referencing posts).
+   Full-width value, fixed legible edit button on the right. */
+.slugview { display: flex; align-items: stretch; gap: 0.5rem; }
+.slugview__val { flex: 1; min-width: 0; display: flex; align-items: center; overflow-x: auto; font-family: var(--mono); font-size: 0.9rem; color: var(--ink); background: var(--paper-2); border: 1px solid var(--paper-line); border-radius: 0.4rem; padding: 0.45rem 0.6rem; }
+.slugview__edit { flex: none; display: inline-flex; align-items: center; gap: 0.35rem; font-family: var(--mono); font-size: 0.8rem; color: var(--ink); background: var(--paper-2); border: 1px solid var(--paper-line); border-radius: 0.4rem; padding: 0 0.8rem; cursor: pointer; }
+.slugview__edit:hover { border-color: var(--brass); color: var(--brass-deep); background: var(--brass-soft); }
+.slugview__pencil { font-size: 1rem; }
+
+/* Referenced-by list (tag editor): a richer link row - title + a muted
+   kind/slug subline + an open affordance - so it reads as a navigable post, not
+   a bare label. */
+.reflist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.reflink { width: 100%; display: flex; align-items: center; gap: 0.7rem; text-align: left; background: var(--paper-2); border: 1px solid var(--paper-line); border-radius: 0.5rem; padding: 0.55rem 0.7rem; cursor: pointer; }
+.reflink:hover:not(:disabled) { border-color: var(--brass-deep); background: var(--paper); }
+.reflink:disabled { cursor: default; }
+.reflink__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.12rem; }
+.reflink__title { font-family: var(--serif-display); font-size: 0.98rem; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reflink__sub { font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.02em; color: var(--ink-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reflink__go { flex: none; color: var(--ink-faintest); font-size: 0.95rem; }
+.reflink:hover:not(:disabled) .reflink__go { color: var(--brass-deep); }
+.reflist__empty { margin: 0; font-size: 0.85rem; font-style: italic; color: var(--ink-faint); }
 .slugedit { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .slugedit .ffield__input { flex: 1 1 12rem; }
 .slugedit .btn { flex: none; }
@@ -860,10 +915,11 @@ textarea.field__input { resize: vertical; }
 .ffield__expand:hover { color: var(--ink); border-color: var(--brass-deep); }
 
 /* Full-screen tag page-content editing: the post document surface + a back bar. */
-.tagfull { display: flex; flex-direction: column; }
-.tagfull__bar { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 1rem; }
-.tagfull__title { font-family: var(--mono); font-size: 0.72rem; color: var(--ink-faint); }
-.tagfull__title strong { color: var(--ink-mute); font-weight: 500; }
+/* Full-screen tag page-content bar - sits on the parchment, at the top of the
+   page, with a rule separating it from the title so it reads as in-context. */
+.tagfull__bar { display: flex; align-items: center; gap: 0.9rem; margin: 0 0 1.5rem; padding-bottom: 0.95rem; border-bottom: 1px solid var(--paper-line); }
+.tagfull__title { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.04em; color: var(--ink-faint); }
+.tagfull__title strong { color: var(--ink); font-weight: 600; }
 /* FieldWidget inside a parchment formcard: make .field__input read on paper. */
 .formcard .field__input { background: var(--paper); border: 1px solid var(--paper-line); border-radius: 0.45rem; padding: 0.6rem 0.7rem; font-family: var(--serif-body); font-size: 1.02rem; color: var(--ink); outline: none; width: 100%; }
 .formcard .field__input:focus { border-color: var(--brass); }
@@ -1031,7 +1087,8 @@ button.chip__label:hover { text-decoration: underline; }
     z-index: 95;
     top: 22vh;
     left: 50%;
-    transform: translateX(-50%);
+    /* Horizontal centering offset is applied by framer-motion (x) so its
+       animated transform doesn't clobber a CSS translateX. */
     width: min(28rem, 92vw);
     background: linear-gradient(180deg, var(--desk-2), var(--desk));
     border: 1px solid var(--desk-line);
@@ -1193,7 +1250,9 @@ button.chip__label:hover { text-decoration: underline; }
 .scrim--modal { z-index: 110; background: rgba(10, 8, 6, 0.62); }
 .cascade {
     position: fixed; z-index: 120;
-    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    /* Centering offset is applied by framer-motion (x/y) so its animated
+       transform doesn't clobber a CSS translate. */
+    top: 50%; left: 50%;
     width: min(28rem, calc(100vw - 2rem));
     background: var(--desk-3); border: 1px solid var(--desk-line);
     border-radius: 0.9rem; padding: 1.4rem;
@@ -1210,6 +1269,21 @@ button.chip__label:hover { text-decoration: underline; }
 .cascade__actions .btn { flex: 1; justify-content: center; }
 .cascade__cancel { display: block; width: 100%; margin-top: 0.75rem; background: none; border: none; color: var(--ink-faint); font-size: 0.78rem; cursor: pointer; }
 .cascade__cancel:hover { color: var(--ink-mute); }
+
+/* Orphaned-reference resolver: a stack of choice buttons (create / reassign /
+   remove), then an inline reassign chooser. */
+.orphan__opts { display: flex; flex-direction: column; gap: 0.5rem; }
+.orphan__opt { display: flex; flex-direction: column; gap: 0.15rem; text-align: left; background: var(--desk); border: 1px solid var(--desk-line); border-radius: 0.55rem; padding: 0.6rem 0.75rem; cursor: pointer; }
+.orphan__opt:hover { border-color: var(--brass-deep); background: var(--desk-3); }
+.orphan__optlabel { font-family: var(--serif-display); font-size: 0.98rem; color: var(--ink-on-desk); }
+.orphan__optsub { font-size: 0.78rem; color: var(--ink-faint); line-height: 1.35; }
+.orphan__opt--danger:hover { border-color: rgba(192, 125, 84, 0.5); }
+.orphan__opt--danger .orphan__optlabel { color: var(--rose); }
+.orphan__reassign { margin-bottom: 0.9rem; }
+.orphan__suggest { display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.4rem; max-height: 12rem; overflow-y: auto; }
+.orphan__suggestitem { display: flex; align-items: baseline; gap: 0.5rem; text-align: left; background: var(--desk); border: 1px solid var(--desk-line); border-radius: 0.4rem; padding: 0.4rem 0.6rem; color: var(--ink-on-desk); font-size: 0.9rem; cursor: pointer; }
+.orphan__suggestitem:hover { border-color: var(--brass-deep); }
+.orphan__suggestslug { font-family: var(--mono); font-size: 0.66rem; color: var(--ink-faint); }
 
 /* Publish: review the whole staged changeset, then commit + push it */
 .publish {

@@ -9,13 +9,18 @@ interface Props {
     items: Resource[]
     activeSlug: string | null
     allTags: string[]
+    // Reference usage when this collection is a reference target (e.g. tags):
+    // per-slug counts + slugs referenced by content with no resource yet.
+    refUsage?: { counts: Map<string, number>; undefinedSlugs: string[] } | null
     onSelect: (slug: string) => void
     onNew: () => void
+    // Click on an undefined (orphaned) referenced slug - opens the resolver.
+    onResolveUndefined?: (collection: string, slug: string) => void
 }
 
 type Sort = 'newest' | 'oldest' | 'draftsFirst' | 'title'
 
-export function Feed({ view, items, activeSlug, allTags, onSelect, onNew }: Props) {
+export function Feed({ view, items, activeSlug, allTags, refUsage, onSelect, onNew, onResolveUndefined }: Props) {
     const isPosts = view.name === 'posts'
     const [sort, setSort] = useState<Sort>(isPosts ? 'newest' : 'title')
     const [tagFilter, setTagFilter] = useState<string>('all')
@@ -94,7 +99,13 @@ export function Feed({ view, items, activeSlug, allTags, onSelect, onNew }: Prop
                                     {isPosts && fbool(r, 'draft') && <span className="card__flag">draft</span>}
                                     {r.dirty && <span className="card__flag card__flag--edit">edited</span>}
                                 </div>
-                                <div className="card__title">{view.feedTitle(r)}</div>
+                                <div className="card__titlerow">
+                                    <div className="card__title">{view.feedTitle(r)}</div>
+                                    {refUsage && (() => {
+                                        const n = refUsage.counts.get(r.slug) ?? 0
+                                        return <span className={'refpill' + (n === 0 ? ' refpill--zero' : '')} title={n === 0 ? 'unused' : `${n} reference${n === 1 ? '' : 's'}`}>{n}</span>
+                                    })()}
+                                </div>
                                 {sub && <div className="card__desc">{sub}</div>}
                                 {tags.length > 0 && (
                                     <div className="card__tags">{tags.map((t) => <span key={t} className="tag">{t}</span>)}</div>
@@ -104,6 +115,34 @@ export function Feed({ view, items, activeSlug, allTags, onSelect, onNew }: Prop
                     )
                 })}
             </ul>
+
+            {refUsage && refUsage.undefinedSlugs.length > 0 && (
+                <div className="undef">
+                    <div className="undef__head">
+                        undefined <span className="undef__hint">referenced by content, no {view.label.toLowerCase().replace(/s$/, '')} yet</span>
+                    </div>
+                    <ul className="undef__list">
+                        {refUsage.undefinedSlugs.map((slug) => {
+                            const n = refUsage.counts.get(slug) ?? 0
+                            return (
+                                <li key={slug}>
+                                    <button
+                                        type="button"
+                                        className="undef__item"
+                                        title={onResolveUndefined ? `resolve "${slug}"` : undefined}
+                                        disabled={!onResolveUndefined}
+                                        onClick={onResolveUndefined ? () => onResolveUndefined(view.name, slug) : undefined}
+                                    >
+                                        <span className="undef__slug">{slug}</span>
+                                        <span className="undef__count">{n} ref{n === 1 ? '' : 's'}</span>
+                                        <span className="undef__add" aria-hidden="true">resolve →</span>
+                                    </button>
+                                </li>
+                            )
+                        })}
+                    </ul>
+                </div>
+            )}
         </nav>
     )
 }

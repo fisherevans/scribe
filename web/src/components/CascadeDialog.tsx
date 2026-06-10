@@ -34,9 +34,10 @@ export function CascadeDialog({ cascade, onResolve, onCancel }: Props) {
                     <motion.div className="scrim scrim--modal" onClick={onCancel} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
                     <motion.div
                         className="cascade"
-                        initial={{ opacity: 0, scale: 0.96, y: 8 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.96, y: 8 }}
+                        style={{ x: '-50%', y: '-50%' }}
+                        initial={{ opacity: 0, scale: 0.96 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.96 }}
                         transition={{ type: 'spring', stiffness: 360, damping: 30 }}
                     >
                         <div className="cascade__head">

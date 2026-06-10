@@ -10,14 +10,16 @@ interface Props {
     onBody: (markdown: string) => void
     emptyTitle?: string
     meta?: ReactNode // inline metadata (date/description/tags) between title and body
+    lead?: ReactNode // optional bar at the very top of the page (e.g. a back/context bar)
 }
 
 // The post writing surface: page chrome (title header, word-count footer) around
 // the shared ContentEditor. Reused for the tag full-screen page-content editor.
-export function Editor({ slug, title, body, editable, onEditTitle, onBody, emptyTitle = 'Untitled', meta }: Props) {
+export function Editor({ slug, title, body, editable, onEditTitle, onBody, emptyTitle = 'Untitled', meta, lead }: Props) {
     const [words, setWords] = useState(0)
     return (
         <article className="page">
+            {lead}
             <header className="page__head">
                 <h1 className={'page__title-display' + (title ? '' : ' is-empty')}>
                     <TitleText text={title || emptyTitle} pencil={editable && !!onEditTitle} onEditTitle={onEditTitle} />
