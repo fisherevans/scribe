@@ -59,8 +59,9 @@ is the practical "how to work in here" companion.
   choice) before anything is sent - the chosen name becomes the real stored
   filename. On confirm the form posts `file`, `dest` (`external`|`local`),
   `name`, `slug`. `dest=external` shells out to `SCRIBE_UPLOAD_CMD` (file +
-  metadata via `SCRIBE_UPLOAD_*` env, stdout is the URL - see
-  [deploy/upload-plugin/upload-r2.sh](deploy/upload-plugin/upload-r2.sh));
+  metadata via `SCRIBE_UPLOAD_*` env, stdout is the URL; the image bundles
+  `rclone` + generic reference uploaders, so a deploy just sets `SCRIBE_UPLOADER`
+  (see [deploy/uploaders/](deploy/uploaders/README.md));
   `dest=local` copies into the
   site's `media.input` dir under a per-post subdir (`<input>/<slug>/`) and serves
   it back under `media.output`. `GET /api/capabilities` tells the UI whether
