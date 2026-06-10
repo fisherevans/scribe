@@ -97,6 +97,13 @@ func main() {
 		Addr:              *addr,
 		Handler:           api.New(cstore, notes, mstore, grepo, publicDir, *uploadCmd, ui).Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
+		// Backstop so a wedged handler returns/closes instead of hanging the
+		// client forever. Generous enough for a publish (squash-merge + push)
+		// and an upload, which are bounded by their own git/command timeouts.
+		// ReadTimeout is intentionally unset so large uploads on slow links
+		// aren't cut off (the body is capped by MaxBytesReader instead).
+		WriteTimeout: 120 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)

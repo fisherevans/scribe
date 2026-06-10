@@ -15,17 +15,34 @@
 //     pushed. A separate downstream pipeline renders/publishes from the
 //     branches - scribe does not build or deploy.
 //
-// All mutating operations are serialized with a mutex; the HTTP handlers that
-// call them run concurrently. scribe keeps the working tree on the staging
-// branch at all times; Promote briefly switches to main and switches back.
+// Concurrency: HTTP handlers call these methods concurrently. Local git work
+// (index/working-tree ops) is serialized by `mu`; network ops (push/fetch) run
+// under a separate `netMu` and never hold `mu`, so a slow or stuck origin can't
+// block a read like StagedPaths. Every git exec is timeout-bounded, and the
+// staged-path lookup is cached, so the common read path usually avoids git
+// (and the mutex) entirely. scribe keeps the working tree on the staging branch
+// at all times; Promote briefly switches to main and switches back.
 package git
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
 	"sync"
 	"time"
+)
+
+// Git execs are bounded so a stuck operation (an unreachable origin, a blocked
+// credential helper) fails instead of hanging a request forever. Network ops
+// (push/fetch) get a longer leash than local ones.
+const (
+	gitLocalTimeout = 15 * time.Second
+	gitNetTimeout   = 60 * time.Second
+	// stagedCacheTTL is how long a computed staged-path set is reused before a
+	// fresh `git diff`. Short enough to feel live, long enough to collapse the
+	// burst of list requests a page load fires.
+	stagedCacheTTL = 3 * time.Second
 )
 
 // SyncStatus is the live state of scribe's git syncing, surfaced to the UI. Rev
@@ -48,13 +65,25 @@ type Repo struct {
 	remote  string
 	push    bool
 
+	// mu guards local git state (the index/working tree and the head bookkeeping
+	// below). Network ops do NOT hold it - they use netMu - so a slow or stuck
+	// push/fetch never blocks a read like StagedPaths.
 	mu         sync.Mutex
 	headSlug   string // resource key of the staging HEAD commit scribe made ("" if none/foreign)
 	headPushed bool   // has the current staging HEAD been pushed?
 
+	netMu sync.Mutex // serializes network ops (push/fetch); held instead of mu
+
 	statusMu      sync.Mutex
 	status        SyncStatus
 	lastBackupRev string
+
+	// Cached staged-path set (StagedPaths), invalidated whenever staging vs main
+	// changes. Lets the per-request "is this dirty" lookups avoid a git diff (and
+	// the mutex) on every list.
+	stagedMu sync.Mutex
+	staged   map[string]bool
+	stagedAt time.Time
 }
 
 // Open verifies dir is a git work tree, ensures the staging branch exists, and
@@ -142,34 +171,57 @@ func (r *Repo) rev() string {
 // resource key ("collection/slug") used both for the message and squash
 // detection. A no-op (nothing staged) returns nil without committing.
 func (r *Repo) Commit(slug string, paths []string, summary string) error {
+	amend, committed, err := r.commitLocal(slug, paths, summary)
+	if err != nil || !committed || !r.push {
+		return err
+	}
+	// Push happens outside r.mu (under netMu) so a slow/stuck origin doesn't
+	// block reads like StagedPaths.
+	return r.pushStaging(amend)
+}
+
+// commitLocal does the local part of a commit under r.mu: stage paths and
+// commit/amend onto staging. committed is false when nothing changed (a save
+// that produced no diff).
+func (r *Repo) commitLocal(slug string, paths []string, summary string) (amend, committed bool, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if err := r.ensureBranch(r.staging); err != nil {
-		return err
+	if err = r.ensureBranch(r.staging); err != nil {
+		return false, false, err
 	}
-	if err := r.add(paths); err != nil {
-		return err
+	if err = r.add(paths); err != nil {
+		return false, false, err
 	}
-	if clean, err := r.indexClean(); err != nil {
-		return err
+	if clean, e := r.indexClean(); e != nil {
+		return false, false, e
 	} else if clean {
-		return nil // save produced no change
+		return false, false, nil // save produced no change
 	}
-	amend := r.headSlug == slug && !r.headPushed
+	amend = r.headSlug == slug && !r.headPushed
 	args := []string{"commit", "-m", summary}
 	if amend {
 		args = []string{"commit", "--amend", "-m", summary}
 	}
-	if _, err := r.run(args...); err != nil {
-		return fmt.Errorf("commit: %w", err)
+	if _, e := r.run(args...); e != nil {
+		return false, false, fmt.Errorf("commit: %w", e)
 	}
 	r.headSlug, r.headPushed = slug, false
-	if r.push {
-		if err := r.pushBranch(r.staging, amend); err != nil {
-			return err
-		}
-		r.headPushed = true
+	r.invalidateStaged()
+	return amend, true, nil
+}
+
+// pushStaging pushes the staging branch outside r.mu (serialized by netMu), then
+// records that the head has been pushed.
+func (r *Repo) pushStaging(force bool) error {
+	r.netMu.Lock()
+	err := r.pushBranch(r.staging, force)
+	r.netMu.Unlock()
+	if err != nil {
+		return err
 	}
+	r.mu.Lock()
+	r.headPushed = true
+	r.mu.Unlock()
 	return nil
 }
 
@@ -220,7 +272,20 @@ func (r *Repo) diffChanges() ([]Change, error) {
 // StagedPaths returns the set of repo-relative paths whose staging version
 // differs from main (i.e. resources with unpublished changes). A renamed
 // resource reports both its old and new path as staged.
+//
+// Cached for stagedCacheTTL: every list request asks for this, so a page load
+// would otherwise fire a `git diff` per collection. The returned map is shared
+// and must be treated as read-only. Invalidated whenever staging vs main moves
+// (commit/publish/sync).
 func (r *Repo) StagedPaths() (map[string]bool, error) {
+	r.stagedMu.Lock()
+	if r.staged != nil && time.Since(r.stagedAt) < stagedCacheTTL {
+		cached := r.staged
+		r.stagedMu.Unlock()
+		return cached, nil
+	}
+	r.stagedMu.Unlock()
+
 	changes, err := r.Diff()
 	if err != nil {
 		return nil, err
@@ -234,7 +299,18 @@ func (r *Repo) StagedPaths() (map[string]bool, error) {
 			set[c.OldPath] = true
 		}
 	}
+	r.stagedMu.Lock()
+	r.staged, r.stagedAt = set, time.Now()
+	r.stagedMu.Unlock()
 	return set, nil
+}
+
+// invalidateStaged drops the cached staged-path set so the next StagedPaths
+// recomputes. Called after any op that changes staging vs main.
+func (r *Repo) invalidateStaged() {
+	r.stagedMu.Lock()
+	r.staged = nil
+	r.stagedMu.Unlock()
 }
 
 // Publish lands the entire staging changeset onto main as one squash commit,
@@ -286,6 +362,7 @@ func (r *Repo) Publish(summary string) (int, error) {
 		return 0, fmt.Errorf("reset staging to main: %w", err)
 	}
 	r.headSlug, r.headPushed = "", false
+	r.invalidateStaged()
 	if r.push {
 		if err := r.pushBranch(r.staging, true); err != nil {
 			return len(changes), err
@@ -298,20 +375,27 @@ func (r *Repo) Publish(summary string) (int, error) {
 // redundancy. Force-with-lease because publish/sync can rewind staging. No-op
 // when push is disabled or nothing changed.
 func (r *Repo) BackupPush() error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	if !r.push {
 		return nil
 	}
+	// Read the current head under mu (a local rev-parse), then push outside it.
+	r.mu.Lock()
 	head := r.rev()
-	if head == "" || head == r.lastBackupRev {
+	last := r.lastBackupRev
+	r.mu.Unlock()
+	if head == "" || head == last {
 		return nil
 	}
-	if err := r.pushBranch(r.staging, true); err != nil {
+	r.netMu.Lock()
+	err := r.pushBranch(r.staging, true)
+	r.netMu.Unlock()
+	if err != nil {
 		r.setStatus(SyncStatus{State: "error", Message: "backup push failed: " + err.Error(), Rev: head, Push: true})
 		return err
 	}
+	r.mu.Lock()
 	r.lastBackupRev = head
+	r.mu.Unlock()
 	r.setStatus(SyncStatus{State: r.okState(), Rev: head, LastBackup: time.Now(), Push: true})
 	return nil
 }
@@ -322,19 +406,28 @@ func (r *Repo) BackupPush() error {
 // untouched, and flags a "conflict" status for the UI to surface. No-op when
 // push is disabled (no remote) or the working tree is mid-edit (dirty).
 func (r *Repo) Sync() error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	if !r.push {
 		return nil
 	}
+	// Fetch is a network op: do it outside the main lock (under netMu) so it
+	// never blocks reads, and bound it with the network timeout.
+	r.netMu.Lock()
+	_, ferr := r.runWithin(gitNetTimeout, "fetch", r.remote, r.main)
+	r.netMu.Unlock()
+	if ferr != nil {
+		r.setStatus(SyncStatus{State: "error", Message: "fetch failed: " + ferr.Error(), Rev: r.rev(), Push: true})
+		return ferr
+	}
+	// Local reconcile needs the main lock. Skip this tick if a request or commit
+	// holds it rather than queueing the background loop behind them.
+	if !r.mu.TryLock() {
+		return nil
+	}
+	defer r.mu.Unlock()
 	if dirty, err := r.dirty(); err != nil {
 		return err
 	} else if dirty {
 		return nil // uncommitted save in flight; try next tick
-	}
-	if _, err := r.run("fetch", r.remote, r.main); err != nil {
-		r.setStatus(SyncStatus{State: "error", Message: "fetch failed: " + err.Error(), Rev: r.rev(), Push: true})
-		return err
 	}
 	remoteRef := r.remote + "/" + r.main
 	behind, err := r.run("rev-list", "--count", r.main+".."+remoteRef)
@@ -361,6 +454,7 @@ func (r *Repo) Sync() error {
 		r.setStatus(SyncStatus{State: "error", Message: err.Error(), Rev: r.rev(), Push: true})
 		return err
 	}
+	r.invalidateStaged()
 	r.setStatus(SyncStatus{State: r.okState(), Rev: r.rev(), LastSync: time.Now(), Push: true})
 	return nil
 }
@@ -373,13 +467,27 @@ func (r *Repo) okState() string { return "ok" }
 
 // ---- internals ----------------------------------------------------------
 
+// run executes a local git command with the local timeout.
 func (r *Repo) run(args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	return r.runWithin(gitLocalTimeout, args...)
+}
+
+// runWithin executes a git command bounded by timeout. On timeout the process
+// is killed and a clear error returned, so a stuck git op can never hang a
+// caller (or the request behind it) indefinitely.
+func (r *Repo) runWithin(timeout time.Duration, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = r.dir
 	var out, errb strings.Builder
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
-	if err := cmd.Run(); err != nil {
+	err := cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		return out.String(), fmt.Errorf("git %s: timed out after %s", strings.Join(args, " "), timeout)
+	}
+	if err != nil {
 		return out.String(), fmt.Errorf("git %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(errb.String()))
 	}
 	return out.String(), nil
@@ -393,7 +501,9 @@ func (r *Repo) add(paths []string) error {
 
 // indexClean reports whether the index has no staged changes vs HEAD.
 func (r *Repo) indexClean() (bool, error) {
-	if err := exec.Command("git", "-C", r.dir, "diff", "--cached", "--quiet").Run(); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), gitLocalTimeout)
+	defer cancel()
+	if err := exec.CommandContext(ctx, "git", "-C", r.dir, "diff", "--cached", "--quiet").Run(); err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
 			return false, nil // exit 1 = changes staged
 		}
@@ -411,12 +521,16 @@ func (r *Repo) dirty() (bool, error) {
 }
 
 func (r *Repo) branchExists(name string) bool {
-	err := exec.Command("git", "-C", r.dir, "show-ref", "--verify", "--quiet", "refs/heads/"+name).Run()
+	ctx, cancel := context.WithTimeout(context.Background(), gitLocalTimeout)
+	defer cancel()
+	err := exec.CommandContext(ctx, "git", "-C", r.dir, "show-ref", "--verify", "--quiet", "refs/heads/"+name).Run()
 	return err == nil
 }
 
 func (r *Repo) existsOnBranch(branch, path string) bool {
-	err := exec.Command("git", "-C", r.dir, "cat-file", "-e", branch+":"+path).Run()
+	ctx, cancel := context.WithTimeout(context.Background(), gitLocalTimeout)
+	defer cancel()
+	err := exec.CommandContext(ctx, "git", "-C", r.dir, "cat-file", "-e", branch+":"+path).Run()
 	return err == nil
 }
 
@@ -437,6 +551,6 @@ func (r *Repo) pushBranch(branch string, force bool) error {
 	if force {
 		args = []string{"push", "--force-with-lease", r.remote, branch}
 	}
-	_, err := r.run(args...)
+	_, err := r.runWithin(gitNetTimeout, args...)
 	return err
 }

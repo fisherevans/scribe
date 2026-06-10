@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,11 +10,16 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // maxUploadBytes caps a single image upload. Generous for photos, small enough
 // to keep a stray file from filling the disk.
 const maxUploadBytes = 32 << 20 // 32 MiB
+
+// uploadCmdTimeout bounds the external upload command (SCRIBE_UPLOAD_CMD) so a
+// hung uploader can't hold a request open indefinitely.
+const uploadCmdTimeout = 90 * time.Second
 
 // upload accepts a multipart image and resolves it to a URL the editor inserts.
 //
@@ -151,7 +157,11 @@ func (s *Server) uploadViaCmd(file io.Reader, name, ext, contentType, slug strin
 		return "", err
 	}
 
-	cmd := exec.Command("sh", "-c", s.uploadCmd)
+	// Bound the upload command so a stuck uploader (unreachable store, hung
+	// network) fails instead of holding the request open.
+	ctx, cancel := context.WithTimeout(context.Background(), uploadCmdTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sh", "-c", s.uploadCmd)
 	cmd.Env = append(os.Environ(),
 		"SCRIBE_UPLOAD_FILE="+tmp.Name(),
 		"SCRIBE_UPLOAD_NAME="+name,
@@ -160,6 +170,9 @@ func (s *Server) uploadViaCmd(file io.Reader, name, ext, contentType, slug strin
 		"SCRIBE_UPLOAD_SLUG="+slug, // the post being edited; e.g. an R2 key namespace
 	)
 	out, err := cmd.Output()
+	if ctx.Err() == context.DeadlineExceeded {
+		return "", fmt.Errorf("upload command timed out after %s", uploadCmdTimeout)
+	}
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
 			return "", fmt.Errorf("upload command failed: %s", strings.TrimSpace(string(ee.Stderr)))
