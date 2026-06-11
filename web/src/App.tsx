@@ -36,6 +36,14 @@ const loadRail = (): number | null => {
 }
 const today = () => new Date().toISOString().slice(0, 10)
 
+// The slug to auto-select when opening a collection with no hash: newest by
+// `date` (matching the feed's default sort). Items without a date keep the
+// server's order (alphabetical by slug). null for an empty collection.
+const defaultSlug = (rs: Resource[]): string | null => {
+    if (rs.length === 0) return null
+    return [...rs].sort((a, b) => fstr(b, 'date').localeCompare(fstr(a, 'date')))[0].slug
+}
+
 // #/<collection>/<slug>
 function parseHash(): { collection?: string; slug?: string } {
     const m = location.hash.match(/^#\/([a-z0-9-]+)(?:\/([^/]+))?/i)
@@ -215,7 +223,11 @@ export default function App() {
                 const firstSel: Record<string, string | null> = {}
                 names.forEach((c, i) => {
                     nextLists[c] = results[i] ?? []
-                    firstSel[c] = results[i]?.[0]?.slug ?? null
+                    // Default to the newest by date, matching the feed's default
+                    // sort. The server lists alphabetically by slug, so without
+                    // this a fresh load would auto-open whatever slug sorts first
+                    // (e.g. "2d-...") rather than the most recent post.
+                    firstSel[c] = defaultSlug(nextLists[c])
                     for (const r of nextLists[c]) saver.seed(c, r.slug, r.version)
                 })
                 const init = parseHash()
