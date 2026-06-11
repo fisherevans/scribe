@@ -49,7 +49,7 @@ const (
 // is the staging HEAD sha - the web refetches content whenever it changes
 // (covers both local edits and pulled-in external changes).
 type SyncStatus struct {
-	State      string    `json:"state"` // "ok" | "conflict" | "error" | "disabled"
+	State      string    `json:"state"` // "ok" | "conflict" | "error" | "disabled" | "degraded"
 	Message    string    `json:"message"`
 	Rev        string    `json:"rev"`
 	LastSync   time.Time `json:"lastSync,omitempty"`
@@ -111,18 +111,21 @@ func Open(dir, staging, main string, push bool) (*Repo, error) {
 	if r.main == r.staging {
 		return nil, fmt.Errorf("staging and main branch must differ (both %q)", r.main)
 	}
-	if dirty, err := r.dirty(); err != nil {
-		return nil, err
-	} else if dirty {
-		return nil, fmt.Errorf("working tree at %s has uncommitted changes; commit or stash before starting scribe", dir)
-	}
+	// Ensure the staging branch exists (a ref-only op, safe on a dirty tree).
 	if !r.branchExists(r.staging) {
 		if _, err := r.run("branch", r.staging, r.main); err != nil {
 			return nil, fmt.Errorf("create staging branch: %w", err)
 		}
 	}
-	if _, err := r.run("checkout", r.staging); err != nil {
-		return nil, fmt.Errorf("checkout staging: %w", err)
+	// scribe owns the working tree and the staging branch, so a dirty tree at
+	// startup is recoverable, not fatal. It used to disable git entirely - which
+	// silently stranded every later edit and, because write-only saves keep the
+	// tree dirty, never un-stuck itself. Instead, adopt the changes: get onto
+	// staging carrying them, then commit them as one recovery commit. Sources of
+	// a dirty tree include an interrupted save, an uncommitted local upload, a
+	// stray .scribe.yml, or a prior write-only run.
+	if err := r.adoptWorkingTree(); err != nil {
+		return nil, err
 	}
 	state := "ok"
 	if !push {
@@ -130,6 +133,57 @@ func Open(dir, staging, main string, push bool) (*Repo, error) {
 	}
 	r.setStatus(SyncStatus{State: state, Rev: r.rev(), Push: push})
 	return r, nil
+}
+
+// adoptWorkingTree gets onto the staging branch and absorbs any uncommitted
+// changes into a single recovery commit, so a dirty tree never disables scribe.
+// Falls back to an error only when the changes genuinely can't be carried (e.g.
+// a real merge conflict against staging), in which case the caller runs
+// write-only and surfaces the failure to the UI.
+func (r *Repo) adoptWorkingTree() error {
+	dirty, err := r.dirty()
+	if err != nil {
+		return err
+	}
+	cur := ""
+	if out, e := r.run("rev-parse", "--abbrev-ref", "HEAD"); e == nil {
+		cur = strings.TrimSpace(out)
+	}
+	if cur != r.staging {
+		if dirty {
+			// Carry the uncommitted changes across the branch switch.
+			if _, err := r.run("stash", "push", "--include-untracked", "-m", "scribe-startup-recover"); err != nil {
+				return fmt.Errorf("stash before staging checkout: %w", err)
+			}
+			if _, err := r.run("checkout", r.staging); err != nil {
+				return fmt.Errorf("checkout staging: %w", err)
+			}
+			if _, err := r.run("stash", "pop"); err != nil {
+				return fmt.Errorf("restore uncommitted changes onto staging: %w", err)
+			}
+		} else if _, err := r.run("checkout", r.staging); err != nil {
+			return fmt.Errorf("checkout staging: %w", err)
+		}
+	}
+	// Commit whatever is uncommitted now (carried over, or already on staging).
+	d, err := r.dirty()
+	if err != nil {
+		return err
+	}
+	if !d {
+		return nil
+	}
+	if _, err := r.run("add", "-A"); err != nil {
+		return fmt.Errorf("stage recovered changes: %w", err)
+	}
+	if _, err := r.run("commit", "-m", "scribe: recover uncommitted changes on startup"); err != nil {
+		return fmt.Errorf("commit recovered changes: %w", err)
+	}
+	// Not a per-resource commit: clear the squash head so the next save starts a
+	// fresh commit rather than amending onto this recovery one.
+	r.headSlug, r.headPushed = "", false
+	r.invalidateStaged()
+	return nil
 }
 
 // Branches reports the staging and main branch names.

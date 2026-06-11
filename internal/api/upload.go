@@ -71,10 +71,20 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url, err := s.uploadToMediaDir(file, sanitizeSlug(r.FormValue("slug")), name)
+	slug := sanitizeSlug(r.FormValue("slug"))
+	url, absPath, err := s.uploadToMediaDir(file, slug, name)
 	if err != nil {
 		fail(w, err)
 		return
+	}
+	// Commit the new image onto staging. Without this the file is an untracked
+	// working-tree change: it would never publish, and an uncommitted tree
+	// disables git on the next restart.
+	if rel, e := filepath.Rel(s.store.Root(), absPath); e == nil {
+		if e := s.commit("media", slug, "add image "+filepath.Base(absPath), filepath.ToSlash(rel)); e != nil {
+			fail(w, fmt.Errorf("commit uploaded image: %w", e))
+			return
+		}
 	}
 	writeJSON(w, map[string]string{"url": url})
 }
@@ -191,33 +201,35 @@ func (s *Server) uploadViaCmd(ctx context.Context, file io.Reader, name, ext, co
 }
 
 // uploadToMediaDir copies the upload into the site's media input dir (under a
-// per-post subdir when slug is set) and returns its public URL. Requires media
-// to be configured in .pages.yml.
-func (s *Server) uploadToMediaDir(file io.Reader, slug, name string) (string, error) {
+// per-post subdir when slug is set) and returns its public URL plus the written
+// file's absolute path (so the caller can commit it). Requires media to be
+// configured in .pages.yml.
+func (s *Server) uploadToMediaDir(file io.Reader, slug, name string) (url, absPath string, err error) {
 	media := s.store.Schema().Media
 	if media.Input == "" || media.Output == "" {
-		return "", fmt.Errorf("no upload command configured and the site has no media input/output set in .pages.yml; set SCRIBE_UPLOAD_CMD")
+		return "", "", fmt.Errorf("no upload command configured and the site has no media input/output set in .pages.yml; set SCRIBE_UPLOAD_CMD")
 	}
 	dir := filepath.Join(s.store.Root(), filepath.FromSlash(media.Input))
 	if slug != "" {
 		dir = filepath.Join(dir, slug)
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", fmt.Errorf("create media dir: %w", err)
+		return "", "", fmt.Errorf("create media dir: %w", err)
 	}
 	name = uniqueName(dir, name)
-	dst, err := os.Create(filepath.Join(dir, name))
+	absPath = filepath.Join(dir, name)
+	dst, err := os.Create(absPath)
 	if err != nil {
-		return "", fmt.Errorf("create media file: %w", err)
+		return "", "", fmt.Errorf("create media file: %w", err)
 	}
 	if _, err := io.Copy(dst, file); err != nil {
 		dst.Close()
-		return "", fmt.Errorf("write media file: %w", err)
+		return "", "", fmt.Errorf("write media file: %w", err)
 	}
 	if err := dst.Close(); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return path.Join("/", strings.Trim(media.Output, "/"), slug, name), nil
+	return path.Join("/", strings.Trim(media.Output, "/"), slug, name), absPath, nil
 }
 
 // safeFilename reduces a client filename to a path-safe basename, preserving the

@@ -1333,6 +1333,8 @@ button.chip__label:hover { text-decoration: underline; }
 }
 .syncbanner--conflict { background: var(--brass); }
 .syncbanner--error { background: var(--rose); color: #fff; }
+.syncbanner--degraded { background: var(--rose); color: #fff; }
+.syncbanner--degraded .syncbanner__msg strong { font-weight: 600; }
 .syncbanner__icon { font-size: 1rem; flex: none; }
 .syncbanner__msg { flex: 1; line-height: 1.35; }
 .syncbanner__btn {

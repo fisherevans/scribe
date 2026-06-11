@@ -150,7 +150,7 @@ export interface MediaItem {
 }
 
 export interface SyncStatus {
-    state: 'ok' | 'conflict' | 'error' | 'disabled'
+    state: 'ok' | 'conflict' | 'error' | 'disabled' | 'degraded'
     message: string
     rev: string
     lastSync?: string

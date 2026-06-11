@@ -28,13 +28,14 @@ type Server struct {
 	notes     *store.Notes
 	mapping   *mapping.Store
 	git       *git.Repo // nil when the git staging layer is disabled
+	gitErr    string    // non-empty when git was configured but failed to start (degraded)
 	publicDir string
 	uploadCmd string // SCRIBE_UPLOAD_CMD; empty = copy into the site media dir
 	ui        fs.FS  // embedded/served editor UI; nil = API-only (dev uses Vite)
 }
 
-func New(c *content.Store, notes *store.Notes, m *mapping.Store, g *git.Repo, publicDir, uploadCmd string, ui fs.FS) *Server {
-	return &Server{store: c, notes: notes, mapping: m, git: g, publicDir: publicDir, uploadCmd: uploadCmd, ui: ui}
+func New(c *content.Store, notes *store.Notes, m *mapping.Store, g *git.Repo, gitErr, publicDir, uploadCmd string, ui fs.FS) *Server {
+	return &Server{store: c, notes: notes, mapping: m, git: g, gitErr: gitErr, publicDir: publicDir, uploadCmd: uploadCmd, ui: ui}
 }
 
 func (s *Server) Routes() *http.ServeMux {
@@ -340,6 +341,14 @@ func (s *Server) publish(w http.ResponseWriter, _ *http.Request) {
 // state raises a reconcile banner.
 func (s *Server) syncStatus(w http.ResponseWriter, _ *http.Request) {
 	if s.git == nil {
+		// "degraded": git was configured but failed to start (e.g. a tree state
+		// scribe couldn't recover), so edits save to disk but can't be staged or
+		// published. The UI raises a persistent banner. "disabled" (intentional
+		// --no-git) stays silent.
+		if s.gitErr != "" {
+			writeJSON(w, git.SyncStatus{State: "degraded", Message: s.gitErr})
+			return
+		}
 		writeJSON(w, git.SyncStatus{State: "disabled"})
 		return
 	}

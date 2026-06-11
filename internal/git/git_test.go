@@ -70,11 +70,31 @@ func TestOpenCreatesAndChecksOutStaging(t *testing.T) {
 	}
 }
 
-func TestOpenRefusesDirtyTree(t *testing.T) {
+// A dirty tree at startup must not disable git: scribe owns the tree, so Open
+// adopts the uncommitted changes onto staging as a recovery commit and comes up
+// clean. This is what un-sticks an instance that was trapped in write-only mode.
+func TestOpenAdoptsDirtyTree(t *testing.T) {
 	dir := initRepo(t)
-	write(t, dir, "posts/a.md", "dirty edit\n")
-	if _, err := Open(dir, "staging", "", false); err == nil {
-		t.Fatal("expected Open to refuse a dirty working tree")
+	write(t, dir, "posts/a.md", "uncommitted edit\n") // tracked-but-modified
+	write(t, dir, ".scribe.yml", "config: 1\n")       // untracked
+
+	r, err := Open(dir, "staging", "", false)
+	if err != nil {
+		t.Fatalf("Open should recover a dirty tree, got: %v", err)
+	}
+	if cur := gitOut(t, dir, "rev-parse", "--abbrev-ref", "HEAD"); cur != "staging" {
+		t.Fatalf("expected to be on staging, got %q", cur)
+	}
+	if status := gitOut(t, dir, "status", "--porcelain"); status != "" {
+		t.Fatalf("expected a clean tree after recovery, got:\n%s", status)
+	}
+	// The recovered changes are staged beyond main, so they show up to publish.
+	changes, err := r.Diff(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) == 0 {
+		t.Fatal("expected the recovered changes to be staged vs main")
 	}
 }
 

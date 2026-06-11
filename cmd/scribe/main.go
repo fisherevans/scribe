@@ -81,9 +81,11 @@ func main() {
 	// tree; a clean tree is required so scribe can own the staging branch. On
 	// failure we log and run write-only rather than refuse to start.
 	var grepo *git.Repo
+	var gitErr string // non-empty when git was configured but failed to start; surfaced to the UI
 	if !*noGit {
 		grepo, err = git.Open(*repo, *stagingBranch, *mainBranch, *push)
 		if err != nil {
+			gitErr = err.Error()
 			log.Warn("git sync disabled, running write-only", "err", err)
 		} else {
 			st, mn := grepo.Branches()
@@ -142,7 +144,7 @@ func main() {
 	// the application mux, which runs behind the auth middleware.
 	root := http.NewServeMux()
 	authn.Register(root)
-	root.Handle("/", authn.Wrap(api.New(cstore, notes, mstore, grepo, publicDir, *uploadCmd, ui).Routes()))
+	root.Handle("/", authn.Wrap(api.New(cstore, notes, mstore, grepo, gitErr, publicDir, *uploadCmd, ui).Routes()))
 
 	srv := &http.Server{
 		Addr:              *addr,
