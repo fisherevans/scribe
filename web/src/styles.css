@@ -1288,13 +1288,8 @@ button.chip__label:hover { text-decoration: underline; }
 .orphan__suggestslug { font-family: var(--mono); font-size: 0.66rem; color: var(--ink-faint); }
 
 /* Publish: review the whole staged changeset, then commit + push it */
-.publish-wrap {
-    position: fixed; inset: 0; z-index: 120;
-    display: grid; place-items: center; padding: 1.5rem;
-    pointer-events: none;
-}
 .publish {
-    pointer-events: auto;
+    position: fixed; top: 50%; left: 50%; z-index: 120;
     width: min(30rem, calc(100vw - 2rem));
     max-height: calc(100dvh - 3rem);
     display: flex; flex-direction: column;
@@ -1369,6 +1364,72 @@ button.chip__label:hover { text-decoration: underline; }
 .conflictbanner__btn:hover { background: rgba(0, 0, 0, 0.34); }
 .conflictbanner__btn--primary { background: #fff; color: var(--rose); font-weight: 600; }
 .conflictbanner__btn--primary:hover { background: rgba(255, 255, 255, 0.85); }
+
+/* Merge modal: side-by-side conflict resolution. Sits above the conflict banner
+   (z 201), so its scrim/wrapper clear that. Layout mirrors the publish modal -
+   a fixed grid wrapper centers the panel (framer-motion owns the transform), a
+   flex column pins the head/actions while the body scrolls. */
+.scrim--merge { z-index: 210; background: rgba(10, 8, 6, 0.66); }
+.cmerge {
+    position: fixed; top: 50%; left: 50%; z-index: 211;
+    width: min(46rem, calc(100vw - 2rem));
+    max-height: calc(100dvh - 3rem);
+    display: flex; flex-direction: column;
+    background: var(--desk-3); border: 1px solid var(--desk-line);
+    border-radius: 0.9rem; padding: 1.4rem;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+.cmerge__head { margin-bottom: 1rem; flex: none; }
+.cmerge__title { font-size: 1.1rem; font-weight: 600; color: var(--ink); margin: 0 0 0.3rem; }
+.cmerge__sub { font-size: 0.84rem; color: var(--ink-mute); margin: 0; line-height: 1.5; }
+.cmerge__legend { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+.cmerge__chip { font-family: var(--mono); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.08em; padding: 0.1rem 0.45rem; border-radius: 0.35rem; }
+.cmerge__chip--mine { color: var(--green); background: color-mix(in srgb, var(--green) 16%, transparent); }
+.cmerge__chip--theirs { color: var(--rose); background: color-mix(in srgb, var(--rose) 16%, transparent); }
+
+.cmerge__body { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -0.3rem; padding: 0 0.3rem; }
+.cmerge__section { margin-bottom: 1.2rem; }
+.cmerge__sectionname { font-family: var(--mono); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-faint); margin-bottom: 0.5rem; }
+
+.cmerge__row { background: var(--desk); border: 1px solid var(--desk-line); border-radius: 0.55rem; padding: 0.5rem 0.6rem; margin-bottom: 0.5rem; }
+.cmerge__rowhead { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; margin-bottom: 0.45rem; }
+.cmerge__field { font-size: 0.82rem; color: var(--ink-on-desk); font-weight: 600; }
+.cmerge__vals { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; }
+.cmerge__val { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.4rem 0.5rem; border-radius: 0.45rem; border: 1px solid transparent; background: var(--desk-2); opacity: 0.5; }
+.cmerge__val--on { opacity: 1; }
+.cmerge__val--mine.cmerge__val--on { border-color: color-mix(in srgb, var(--green) 55%, transparent); }
+.cmerge__val--theirs.cmerge__val--on { border-color: color-mix(in srgb, var(--rose) 55%, transparent); }
+.cmerge__valtag { font-family: var(--mono); font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-faint); }
+.cmerge__valtext { font-size: 0.82rem; color: var(--ink-on-desk); line-height: 1.4; word-break: break-word; white-space: pre-wrap; }
+.cmerge__empty { color: var(--ink-faint); font-style: italic; }
+
+.cmerge__picker { display: inline-flex; gap: 0; border: 1px solid var(--desk-line); border-radius: 0.4rem; overflow: hidden; flex: none; }
+.cmerge__pick { font-family: var(--mono); font-size: 0.66rem; background: var(--desk-2); color: var(--ink-mute); border: none; padding: 0.2rem 0.55rem; cursor: pointer; }
+.cmerge__pick + .cmerge__pick { border-left: 1px solid var(--desk-line); }
+.cmerge__pick:hover { color: var(--ink); }
+.cmerge__pick--on { color: var(--ink); font-weight: 600; }
+.cmerge__pick--on.cmerge__pick--mine { background: color-mix(in srgb, var(--green) 26%, var(--desk-2)); }
+.cmerge__pick--on.cmerge__pick--theirs { background: color-mix(in srgb, var(--rose) 26%, var(--desk-2)); }
+.cmerge__pick--on.cmerge__pick--both { background: color-mix(in srgb, var(--brass) 26%, var(--desk-2)); }
+
+.cmerge__diff { border: 1px solid var(--desk-line); border-radius: 0.55rem; overflow: hidden; font-family: var(--mono); font-size: 0.74rem; }
+.cmerge__context { background: var(--desk); color: var(--ink-faint); }
+.cmerge__hunk { border-top: 1px solid var(--desk-line); border-bottom: 1px solid var(--desk-line); }
+.cmerge__hunk:first-child { border-top: none; }
+.cmerge__hunkhead { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.3rem 0.5rem; background: var(--desk-2); }
+.cmerge__hunklabel { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-faint); }
+.cmerge__lines--mine { background: color-mix(in srgb, var(--green) 12%, transparent); }
+.cmerge__lines--theirs { background: color-mix(in srgb, var(--rose) 12%, transparent); }
+.cmerge__lines--muted { opacity: 0.4; }
+.cmerge__line { display: flex; gap: 0.5rem; padding: 0.05rem 0.5rem; }
+.cmerge__sign { flex: none; width: 0.7rem; text-align: center; color: var(--ink-faint); }
+.cmerge__lines--mine .cmerge__sign { color: var(--green); }
+.cmerge__lines--theirs .cmerge__sign { color: var(--rose); }
+.cmerge__linetext { white-space: pre-wrap; word-break: break-word; color: var(--ink-on-desk); }
+.cmerge__context .cmerge__linetext { color: var(--ink-faint); }
+
+.cmerge__actions { flex: none; display: flex; gap: 0.6rem; justify-content: flex-end; margin-top: 1rem; }
+.cmerge__actions .btn { flex: 1; justify-content: center; }
 
 /* Failed-save banner: a save that didn't land must never read as saved. */
 .saveerr {

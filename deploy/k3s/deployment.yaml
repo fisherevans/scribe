@@ -23,7 +23,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: scribe
-          image: ghcr.io/fisherevans/scribe:v0.2.3
+          image: ghcr.io/fisherevans/scribe:v0.2.4
           imagePullPolicy: Always
           ports:
             - name: http

@@ -22,6 +22,8 @@
     "@tiptap/react": "^2.11.5",
     "@tiptap/starter-kit": "^2.11.5",
     "@tiptap/suggestion": "^2.11.5",
+    "@types/diff": "^7.0.2",
+    "diff": "^9.0.0",
     "framer-motion": "^11.18.2",
     "lowlight": "^3.3.0",
     "markdown-it": "^14.2.0",

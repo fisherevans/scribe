@@ -19,6 +19,7 @@ import { OrphanDialog, type Orphan } from './components/OrphanDialog'
 import { PublishReview, type PublishPhase } from './components/PublishReview'
 import { SyncBanner } from './components/SyncBanner'
 import { ConflictBanner } from './components/ConflictBanner'
+import { ConflictResolveModal } from './components/ConflictResolveModal'
 import { SaveErrorBanner, type SaveErrorReason } from './components/SaveErrorBanner'
 import { DraftRecovery, type RecoverItem } from './components/DraftRecovery'
 import type { Capabilities, PublishChange, SyncStatus } from './api'
@@ -82,6 +83,8 @@ export default function App() {
     // A concurrent-edit conflict on the open resource: the file changed elsewhere
     // since we read it. Autosave pauses until the user reloads or overwrites.
     const [conflict, setConflict] = useState<{ collection: string; slug: string; theirs: Resource } | null>(null)
+    // Whether the side-by-side merge modal is open for the current conflict.
+    const [resolveOpen, setResolveOpen] = useState(false)
     // Bumped to force the open editor to remount (e.g. after taking "theirs").
     const [reloadNonce, setReloadNonce] = useState(0)
     const [modal, setModal] = useState<{ open: boolean; mode: 'new' | 'edit' }>({ open: false, mode: 'new' })
@@ -314,6 +317,24 @@ export default function App() {
         if (!mine) return
         saver.overwrite(c, mine)
     }, [conflict, lists, saver])
+
+    // Merge: adopt the user's reconciled resource (built in the modal from
+    // per-field/per-hunk choices) and force-save it past the version check, same
+    // as overwrite. Reflect it locally and remount the editor so the open doc
+    // shows the merged result.
+    const resolveConflictMerge = useCallback(
+        (merged: Resource) => {
+            if (!conflict) return
+            const c = conflict.collection
+            setLists((cur) => ({ ...cur, [c]: (cur[c] ?? []).map((r) => (r.slug === merged.slug ? merged : r)) }))
+            writeDraft(c, merged)
+            setResolveOpen(false)
+            setConflict(null)
+            setReloadNonce((n) => n + 1)
+            saver.overwrite(c, merged)
+        },
+        [conflict, saver],
+    )
 
     // "Done" must verify the work actually landed before dropping back to the
     // read-only view. flushAndWait forces any pending save and resolves false if
@@ -650,6 +671,16 @@ export default function App() {
                 title={view ? view.feedTitle(active) : conflict.slug}
                 onReload={resolveConflictReload}
                 onOverwrite={resolveConflictOverwrite}
+                onReview={() => setResolveOpen(true)}
+            />
+        )}
+        {resolveOpen && conflict && active && (
+            <ConflictResolveModal
+                mine={active}
+                theirs={conflict.theirs}
+                fieldDefs={schema?.collections.find((c) => c.name === conflict.collection)?.fields ?? []}
+                onCancel={() => setResolveOpen(false)}
+                onResolve={resolveConflictMerge}
             />
         )}
         <div className={'app' + (drawer ? ' app--drawer' : '')}>
@@ -694,15 +725,16 @@ export default function App() {
             )}
             <CascadeDialog cascade={cascade} onResolve={runCascade} onCancel={() => setCascade(null)} />
             <OrphanDialog orphan={orphan} onCreate={createOrphan} onReassign={reassignOrphan} onRemove={removeOrphan} onCancel={() => setOrphan(null)} />
-            <PublishReview
-                open={publishOpen}
-                diff={publishDiff}
-                phase={publishPhase}
-                result={publishResult}
-                error={publishError}
-                onConfirm={confirmPublish}
-                onClose={() => setPublishOpen(false)}
-            />
+            {publishOpen && (
+                <PublishReview
+                    diff={publishDiff}
+                    phase={publishPhase}
+                    result={publishResult}
+                    error={publishError}
+                    onConfirm={confirmPublish}
+                    onClose={() => setPublishOpen(false)}
+                />
+            )}
             <TitleSlugModal
                 open={modal.open}
                 mode={modal.mode}
