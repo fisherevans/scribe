@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { useState } from 'react'
 import type { Resource } from '../types'
 import type { Draft } from '../lib/drafts'
@@ -34,15 +34,18 @@ export function DraftRecovery({ items, onRestore, onDiscard, onClose }: Props) {
     const [open, setOpen] = useState<string | null>(items[0] ? key(items[0]) : null)
     if (items.length === 0) return null
 
+    // Rendered only while there are drafts to recover (early return above + the
+    // parent gates on items.length), so this owns no presence state - no
+    // AnimatePresence. A keyless multi-child AnimatePresence also tripped React's
+    // duplicate-key warning and gave no real exit animation anyway.
     return (
-        <AnimatePresence>
-            <motion.div className="scrim scrim--modal" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
+        <>
+            <motion.div className="scrim scrim--modal" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} />
             <motion.div
                 className="cascade recover"
                 style={{ x: '-50%', y: '-50%' }}
                 initial={{ opacity: 0, scale: 0.96 }}
                 animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.96 }}
                 transition={{ type: 'spring', stiffness: 360, damping: 30 }}
             >
                 <div className="cascade__head">
@@ -79,7 +82,7 @@ export function DraftRecovery({ items, onRestore, onDiscard, onClose }: Props) {
 
                 <button className="cascade__cancel" type="button" onClick={onClose}>Decide later</button>
             </motion.div>
-        </AnimatePresence>
+        </>
     )
 }
 

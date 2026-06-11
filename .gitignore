@@ -29,3 +29,5 @@ internal/webui/dist/*
 /.run-data/
 # Local dev launcher (machine-specific paths)
 /.run/
+# Editor/agent tooling config (e.g. preview launch.json, machine-specific)
+/.claude/
