@@ -3,9 +3,22 @@ import type { Mapping } from './mapping'
 
 // Generic client over the schema-driven service. Everything is keyed by
 // collection name discovered from /api/schema.
-async function json(res: Response) {
-    if (!res.ok && res.status !== 204) throw new Error(`${res.status}: ${await res.text()}`)
-    return res.status === 204 ? null : res.json()
+
+// The session/auth proxy in front of scribe expired - the write didn't reach the
+// backend and the user must re-authenticate. Detected, not swallowed.
+export class AuthError extends Error {
+    constructor() {
+        super('not authenticated')
+        this.name = 'AuthError'
+    }
+}
+
+// Couldn't reach the server at all (offline / network blip). Callers retry.
+export class OfflineError extends Error {
+    constructor() {
+        super('cannot reach server')
+        this.name = 'OfflineError'
+    }
 }
 
 // Thrown by save() on a 409: the file changed since the client read it. Carries
@@ -19,30 +32,60 @@ export class ConflictError extends Error {
     }
 }
 
+function sameOrigin(url: string): boolean {
+    try {
+        return new URL(url, location.href).origin === location.origin
+    } catch {
+        return true
+    }
+}
+
+// request wraps fetch so an expired auth session or a dead connection can never
+// masquerade as a successful (or merely "unsaved") response. An auth proxy
+// intercepts an expired session one of three ways - a 401/403, a redirect to the
+// login origin, or the login HTML served with a 200 - all surfaced as AuthError.
+async function request(input: string, init?: RequestInit): Promise<Response> {
+    let res: Response
+    try {
+        res = await fetch(input, init)
+    } catch {
+        throw new OfflineError()
+    }
+    if (res.status === 401 || res.status === 403) throw new AuthError()
+    if (res.redirected && !sameOrigin(res.url)) throw new AuthError()
+    if (res.ok && (res.headers.get('content-type') || '').includes('text/html')) throw new AuthError()
+    return res
+}
+
+async function json(res: Response) {
+    if (!res.ok && res.status !== 204) throw new Error(`${res.status}: ${await res.text()}`)
+    return res.status === 204 ? null : res.json()
+}
+
 const C = (c: string) => `/api/c/${encodeURIComponent(c)}`
 const R = (c: string, slug: string) => `${C(c)}/${encodeURIComponent(slug)}`
 
 export const api = {
     schema(): Promise<Schema> {
-        return fetch('/api/schema').then(json)
+        return request('/api/schema').then(json)
     },
     mapping(): Promise<Mapping> {
-        return fetch('/api/mapping').then(json)
+        return request('/api/mapping').then(json)
     },
     saveMapping(m: Mapping): Promise<Mapping> {
-        return fetch('/api/mapping', {
+        return request('/api/mapping', {
             method: 'PUT',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(m),
         }).then(json)
     },
     list(c: string): Promise<Resource[]> {
-        return fetch(C(c)).then(json)
+        return request(C(c)).then(json)
     },
     // Full resource: the service rewrites the whole file, so a partial would drop
     // untouched frontmatter.
     async save(c: string, slug: string, data: Resource): Promise<Resource> {
-        const res = await fetch(R(c, slug), {
+        const res = await request(R(c, slug), {
             method: 'PUT',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(data),
@@ -51,13 +94,13 @@ export const api = {
         return json(res)
     },
     create(c: string): Promise<Resource> {
-        return fetch(C(c), { method: 'POST' }).then(json)
+        return request(C(c), { method: 'POST' }).then(json)
     },
     remove(c: string, slug: string): Promise<void> {
-        return fetch(R(c, slug), { method: 'DELETE' }).then(() => undefined)
+        return request(R(c, slug), { method: 'DELETE' }).then(() => undefined)
     },
     rename(c: string, slug: string, to: string): Promise<{ slug: string }> {
-        return fetch(`${R(c, slug)}/rename`, {
+        return request(`${R(c, slug)}/rename`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ to }),
@@ -65,10 +108,10 @@ export const api = {
     },
     // The staged-vs-main changeset: exactly what publish will land, atomically.
     publishDiff(): Promise<PublishDiff> {
-        return fetch('/api/publish').then(json)
+        return request('/api/publish').then(json)
     },
     publish(): Promise<PublishResult> {
-        return fetch('/api/publish', { method: 'POST' }).then(json)
+        return request('/api/publish', { method: 'POST' }).then(json)
     },
     // Upload an image. dest 'external' runs the configured upload command (CDN);
     // 'local' copies into the site media dir, grouped per-post when a slug is
@@ -79,21 +122,21 @@ export const api = {
         body.append('dest', opts.dest)
         if (opts.name) body.append('name', opts.name)
         if (opts.slug) body.append('slug', opts.slug)
-        return fetch('/api/upload', { method: 'POST', body }).then(json)
+        return request('/api/upload', { method: 'POST', body }).then(json)
     },
     capabilities(): Promise<Capabilities> {
-        return fetch('/api/capabilities').then(json)
+        return request('/api/capabilities').then(json)
     },
     // In-repo images the editor can reuse (the post's folder first, then the
     // media root). For the "browse repo images" picker.
     media(slug?: string): Promise<{ items: MediaItem[] }> {
-        return fetch('/api/media' + (slug ? `?slug=${encodeURIComponent(slug)}` : '')).then(json)
+        return request('/api/media' + (slug ? `?slug=${encodeURIComponent(slug)}` : '')).then(json)
     },
     syncStatus(): Promise<SyncStatus> {
-        return fetch('/api/sync').then(json)
+        return request('/api/sync').then(json)
     },
     syncNow(): Promise<SyncStatus> {
-        return fetch('/api/sync', { method: 'POST' }).then(json)
+        return request('/api/sync', { method: 'POST' }).then(json)
     },
 }
 

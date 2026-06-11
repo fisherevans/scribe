@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Resource } from '../types'
 
-export type SaveStatus = 'idle' | 'saving' | 'saved' | 'edited'
+export type SaveStatus = 'idle' | 'saving' | 'saved' | 'edited' | 'error'
 
 interface Props {
     resource: Resource | null
@@ -23,6 +23,7 @@ const STATUS_LABEL: Record<SaveStatus, string> = {
     saving: 'saving…',
     saved: 'saved',
     edited: 'unsaved',
+    error: 'not saved',
 }
 
 // Deliberately sparse: the page is the primary thing. The bar shows only the

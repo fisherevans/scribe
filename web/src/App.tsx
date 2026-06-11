@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, ConflictError } from './api'
+import { api } from './api'
+import { Saver } from './lib/saver'
+import { clearDraft, listDrafts, recoverableDraft, writeDraft, type Draft } from './lib/drafts'
 import type { Resource, Schema } from './types'
 import { fstr, flist } from './types'
 import { viewFor, type CollectionView, type ResourcePatch, type Referencer } from './collections'
@@ -17,6 +19,8 @@ import { OrphanDialog, type Orphan } from './components/OrphanDialog'
 import { PublishReview, type PublishPhase } from './components/PublishReview'
 import { SyncBanner } from './components/SyncBanner'
 import { ConflictBanner } from './components/ConflictBanner'
+import { SaveErrorBanner, type SaveErrorReason } from './components/SaveErrorBanner'
+import { DraftRecovery, type RecoverItem } from './components/DraftRecovery'
 import type { Capabilities, PublishChange, SyncStatus } from './api'
 import { TitleSlugModal } from './components/TitleSlugModal'
 import { applyTheme, DEFAULT_THEME, loadTheme, saveTheme, type Theme } from './theme'
@@ -50,6 +54,9 @@ export default function App() {
     const [lists, setLists] = useState<Record<string, Resource[]>>({})
     const [sel, setSel] = useState<Record<string, string | null>>({})
     const [status, setStatus] = useState<SaveStatus>('idle')
+    // A failed save the user must know about: 'auth' (signed out) or 'offline'
+    // (server unreachable, retrying). Drives the prominent banner.
+    const [saveError, setSaveError] = useState<SaveErrorReason | null>(null)
     const [publishOpen, setPublishOpen] = useState(false)
     const [publishDiff, setPublishDiff] = useState<PublishChange[] | null>(null)
     const [publishPhase, setPublishPhase] = useState<PublishPhase>('review')
@@ -67,8 +74,6 @@ export default function App() {
     // A concurrent-edit conflict on the open resource: the file changed elsewhere
     // since we read it. Autosave pauses until the user reloads or overwrites.
     const [conflict, setConflict] = useState<{ collection: string; slug: string; theirs: Resource } | null>(null)
-    const conflictRef = useRef(false)
-    useEffect(() => { conflictRef.current = !!conflict }, [conflict])
     // Bumped to force the open editor to remount (e.g. after taking "theirs").
     const [reloadNonce, setReloadNonce] = useState(0)
     const [modal, setModal] = useState<{ open: boolean; mode: 'new' | 'edit' }>({ open: false, mode: 'new' })
@@ -76,7 +81,11 @@ export default function App() {
     const [settings, setSettings] = useState<AppSettings>(loadSettings)
     const [loadError, setLoadError] = useState<string | null>(null)
     const [caps, setCaps] = useState<Capabilities | null>(null)
-    const saveTimer = useRef<number | null>(null)
+    // localStorage edits that never reached the server (auth loss / crash), read
+    // once at mount before any save can clear them. Surfaced via DraftRecovery.
+    const [drafts] = useState<Draft[]>(() => listDrafts())
+    const [recoverResolved, setRecoverResolved] = useState<Set<string>>(() => new Set())
+    const [recoverClosed, setRecoverClosed] = useState(false)
     const railW = useRef(loadRail())
 
     const resolved = useMemo(() => (schema ? resolve(schema, mapping) : null), [schema, mapping])
@@ -145,6 +154,21 @@ export default function App() {
         return { counts, undefinedSlugs }
     }, [views, lists, collection])
 
+    // Drafts worth recovering: local edits that still diverge from the loaded
+    // server copy and haven't been restored/discarded this session.
+    const recoverItems = useMemo<RecoverItem[]>(() => {
+        if (recoverClosed || drafts.length === 0 || !schema) return []
+        return drafts
+            .filter((d) => !recoverResolved.has(d.collection + '/' + d.slug))
+            .map((d) => {
+                const server = (lists[d.collection] ?? []).find((r) => r.slug === d.slug)
+                const v = views.find((x) => x.name === d.collection)
+                const r = server ?? d.resource
+                return { draft: d, server, label: v ? v.feedTitle(r) : fstr(r, 'title') || d.slug }
+            })
+            .filter((it) => recoverableDraft(it.draft, it.server))
+    }, [drafts, recoverResolved, recoverClosed, lists, schema, views])
+
     useEffect(() => { applyTheme(theme); saveTheme(theme) }, [theme])
     useEffect(() => saveSettings(settings), [settings])
 
@@ -189,7 +213,11 @@ export default function App() {
                 const results = await Promise.all(names.map((c) => api.list(c)))
                 const nextLists: Record<string, Resource[]> = {}
                 const firstSel: Record<string, string | null> = {}
-                names.forEach((c, i) => { nextLists[c] = results[i] ?? []; firstSel[c] = results[i]?.[0]?.slug ?? null })
+                names.forEach((c, i) => {
+                    nextLists[c] = results[i] ?? []
+                    firstSel[c] = results[i]?.[0]?.slug ?? null
+                    for (const r of nextLists[c]) saver.seed(c, r.slug, r.version)
+                })
                 const init = parseHash()
                 const start = init.collection && names.includes(init.collection) ? init.collection : sch.primary || names[0]
                 if (init.slug && nextLists[start]?.some((r) => r.slug === init.slug)) firstSel[start] = init.slug
@@ -210,25 +238,30 @@ export default function App() {
         return () => { window.removeEventListener('popstate', onNav); window.removeEventListener('hashchange', onNav) }
     }, [])
 
-    const queueSave = useCallback((c: string, resource: Resource) => {
-        setStatus('edited')
-        if (saveTimer.current) window.clearTimeout(saveTimer.current)
-        saveTimer.current = window.setTimeout(async () => {
-            // Hold off while a conflict is unresolved - don't keep re-clobbering.
-            if (conflictRef.current) return
-            setStatus('saving')
-            try {
-                const next = await api.save(c, resource.slug, resource)
-                setLists((cur) => ({ ...cur, [c]: cur[c].map((r) => (r.slug === resource.slug ? next : r)) }))
-                setStatus('saved')
-            } catch (e) {
-                if (e instanceof ConflictError) {
-                    setConflict({ collection: c, slug: resource.slug, theirs: e.current })
+    // The single autosave path. The Saver serializes writes, tracks the server
+    // version per resource (so a burst of edits during a slow save can't send a
+    // stale version and trigger a bogus 409), retries transient failures, and
+    // surfaces auth/offline failures instead of swallowing them.
+    const saverRef = useRef<Saver | null>(null)
+    if (!saverRef.current) {
+        saverRef.current = new Saver({
+            onState: (s) => {
+                switch (s.kind) {
+                    case 'idle': setStatus('idle'); setSaveError(null); break
+                    case 'dirty': setStatus('edited'); setSaveError(null); break
+                    case 'saving': setStatus('saving'); setSaveError(null); break
+                    case 'saved': setStatus('saved'); setSaveError(null); break
+                    case 'error': setStatus('error'); setSaveError(s.reason); break
                 }
-                setStatus('edited')
-            }
-        }, 650)
-    }, [])
+            },
+            onSaved: (c, saved) => {
+                setLists((cur) => ({ ...cur, [c]: (cur[c] ?? []).map((r) => (r.slug === saved.slug ? saved : r)) }))
+                clearDraft(c, saved.slug) // persisted; drop the local safety copy
+            },
+            onConflict: (c, slug, theirs) => setConflict({ collection: c, slug, theirs }),
+        })
+    }
+    const saver = saverRef.current
 
     const patch = useCallback(
         (p: ResourcePatch) => {
@@ -241,39 +274,64 @@ export default function App() {
                 dirty: true,
             }
             setLists((cur) => ({ ...cur, [collection]: cur[collection].map((r) => (r.slug === merged.slug ? merged : r)) }))
-            queueSave(collection, merged)
+            writeDraft(collection, merged) // local safety net before the network round-trip
+            saver.request(collection, merged)
         },
-        [active, collection, queueSave],
+        [active, collection, saver],
     )
 
-    // Take the server's version: replace local state and remount the editor.
+    // Take the server's version: replace local state, drop the local draft, and
+    // remount the editor. The saver adopts the server's version so the next edit
+    // saves cleanly.
     const resolveConflictReload = useCallback(() => {
         if (!conflict) return
         const { collection: c, theirs } = conflict
         setLists((cur) => ({ ...cur, [c]: (cur[c] ?? []).map((r) => (r.slug === theirs.slug ? theirs : r)) }))
+        clearDraft(c, theirs.slug)
         setConflict(null)
         setReloadNonce((n) => n + 1)
-        setStatus('saved')
-    }, [conflict])
+        saver.acceptTheirs(c, theirs.slug, theirs.version)
+    }, [conflict, saver])
 
-    // Keep my version: re-save (current edits) with the version cleared to force
-    // past the check.
-    const resolveConflictOverwrite = useCallback(async () => {
+    // Keep my version: force-save current edits past the version check.
+    const resolveConflictOverwrite = useCallback(() => {
         if (!conflict) return
         const { collection: c, slug } = conflict
         const mine = (lists[c] ?? []).find((r) => r.slug === slug)
         setConflict(null)
         if (!mine) return
-        setStatus('saving')
-        try {
-            const next = await api.save(c, slug, { ...mine, version: undefined })
-            setLists((cur) => ({ ...cur, [c]: cur[c].map((r) => (r.slug === slug ? next : r)) }))
-            setStatus('saved')
-        } catch (e) {
-            if (e instanceof ConflictError) setConflict({ collection: c, slug, theirs: e.current })
-            else setStatus('edited')
-        }
-    }, [conflict, lists])
+        saver.overwrite(c, mine)
+    }, [conflict, lists, saver])
+
+    // "Done" must verify the work actually landed before dropping back to the
+    // read-only view. flushAndWait forces any pending save and resolves false if
+    // it failed or hit a conflict - in which case the error/conflict banner is up
+    // and the status reads "not saved", so Done never implies a false success.
+    const toggleEdit = useCallback(async () => {
+        if (!editMode) { setEditMode(true); return }
+        await saver.flushAndWait()
+        setEditMode(false)
+    }, [editMode, saver])
+
+    // Restore a recovered draft: load it into state, open it for editing, and
+    // re-queue the save so it lands. Discard just drops the local copy.
+    const restoreDraft = useCallback((it: RecoverItem) => {
+        const { collection: c, resource } = it.draft
+        const k = c + '/' + resource.slug
+        setLists((cur) => {
+            const have = (cur[c] ?? []).some((r) => r.slug === resource.slug)
+            const nextList = have ? cur[c].map((r) => (r.slug === resource.slug ? resource : r)) : [resource, ...(cur[c] ?? [])]
+            return { ...cur, [c]: nextList }
+        })
+        setCollection(c); setSel((s) => ({ ...s, [c]: resource.slug })); writeHash(c, resource.slug); setEditMode(true)
+        setRecoverResolved((s) => new Set(s).add(k))
+        saver.request(c, resource)
+    }, [saver])
+
+    const discardDraft = useCallback((it: RecoverItem) => {
+        clearDraft(it.draft.collection, it.draft.slug)
+        setRecoverResolved((s) => new Set(s).add(it.draft.collection + '/' + it.draft.slug))
+    }, [])
 
     // How many resources have unpublished (staged) changes, across collections.
     const stagedCount = useMemo(
@@ -288,10 +346,13 @@ export default function App() {
         const results = await Promise.all(names.map((c) => api.list(c)))
         setLists((cur) => {
             const next: Record<string, Resource[]> = { ...cur }
-            names.forEach((c, i) => { next[c] = results[i] ?? [] })
+            names.forEach((c, i) => {
+                next[c] = results[i] ?? []
+                for (const r of next[c]) saver.seed(c, r.slug, r.version)
+            })
             return next
         })
-    }, [schema])
+    }, [schema, saver])
 
     // Publish = review the whole staged changeset, then commit + push it atomically.
     const openPublish = useCallback(async () => {
@@ -323,7 +384,7 @@ export default function App() {
 
     // Don't pull-refetch over an in-progress edit (would revert unsaved text).
     const editingRef = useRef(false)
-    useEffect(() => { editingRef.current = editMode || status === 'edited' || status === 'saving' }, [editMode, status])
+    useEffect(() => { editingRef.current = editMode || status === 'edited' || status === 'saving' || status === 'error' || saver.dirty }, [editMode, status, saver])
 
     // Poll git sync status: a changed rev means content moved (an external Pages
     // CMS edit was pulled in) -> refetch; a conflict raises the banner.
@@ -553,6 +614,7 @@ export default function App() {
         <DataContext.Provider value={dataApi}>
         <UploadContext.Provider value={{ externalEnabled: caps?.upload.external ?? false, collection, slug: activeSlug ?? '' }}>
         <SyncBanner status={sync} retrying={syncRetrying} onRetry={retrySync} />
+        {saveError && <SaveErrorBanner reason={saveError} />}
         {conflict && active && (
             <ConflictBanner
                 title={view ? view.feedTitle(active) : conflict.slug}
@@ -581,7 +643,7 @@ export default function App() {
                     publishing={publishPhase === 'publishing'}
                     liveUrl={active && view ? liveUrl(settings.hostedDomain, view.livePath(active)) : null}
                     onMenu={() => setDrawer((d) => !d)}
-                    onToggleEdit={() => setEditMode((m) => !m)}
+                    onToggleEdit={toggleEdit}
                     onDetails={() => setDetails(true)}
                     onPublish={openPublish}
                 />
@@ -596,6 +658,9 @@ export default function App() {
 
             {view?.hasDetails && (
                 <PublishSheet resource={active} map={view.map} references={view.references} def={view.def} open={details} onClose={() => setDetails(false)} onPatch={patch} onRename={rename} onDelete={deleteActive} onOpenRef={openResource} />
+            )}
+            {recoverItems.length > 0 && (
+                <DraftRecovery items={recoverItems} onRestore={restoreDraft} onDiscard={discardDraft} onClose={() => setRecoverClosed(true)} />
             )}
             <CascadeDialog cascade={cascade} onResolve={runCascade} onCancel={() => setCascade(null)} />
             <OrphanDialog orphan={orphan} onCreate={createOrphan} onReassign={reassignOrphan} onRemove={removeOrphan} onCancel={() => setOrphan(null)} />

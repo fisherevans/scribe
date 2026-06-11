@@ -1364,6 +1364,54 @@ button.chip__label:hover { text-decoration: underline; }
 .conflictbanner__btn--primary { background: #fff; color: var(--rose); font-weight: 600; }
 .conflictbanner__btn--primary:hover { background: rgba(255, 255, 255, 0.85); }
 
+/* Failed-save banner: a save that didn't land must never read as saved. */
+.saveerr {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 202;
+    display: flex; align-items: center; gap: 0.8rem;
+    padding: 0.6rem 1rem;
+    background: var(--brass); color: #1a1208;
+    font-size: 0.84rem;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.saveerr--auth { background: var(--rose); color: #fff; }
+.saveerr__icon { flex: none; font-size: 1rem; }
+.saveerr__msg { flex: 1; line-height: 1.35; }
+.saveerr__msg strong { font-weight: 600; }
+.saveerr__btn {
+    flex: none; font-family: var(--mono); font-size: 0.72rem;
+    background: rgba(0, 0, 0, 0.22); color: inherit;
+    border: none; border-radius: 0.4rem; padding: 0.35rem 0.75rem; cursor: pointer;
+}
+.saveerr__btn:hover { background: rgba(0, 0, 0, 0.34); }
+
+/* "not saved" status pill - same weight as the error banner, not a soft hint. */
+.status--error { color: var(--rose); font-weight: 600; }
+
+/* Draft recovery dialog (reuses the .cascade modal shell). */
+.recover { max-width: 40rem; }
+.recover__list { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 0.9rem; }
+.recover__item { border: 1px solid var(--desk-line); border-radius: 0.55rem; padding: 0.6rem 0.75rem; background: var(--desk); }
+.recover__row { display: flex; align-items: center; gap: 0.8rem; }
+.recover__meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+.recover__label { font-family: var(--serif-display); font-size: 0.98rem; color: var(--ink-on-desk); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recover__sub { font-family: var(--mono); font-size: 0.66rem; color: var(--ink-faint); }
+.recover__actions { flex: none; display: flex; gap: 0.4rem; }
+
+/* Line diff (recovery + conflict). */
+.diff { margin-top: 0.6rem; border: 1px solid var(--desk-line); border-radius: 0.45rem; overflow: hidden; }
+.diff--empty { padding: 0.6rem 0.75rem; font-size: 0.8rem; color: var(--ink-faint); }
+.diff__stat { display: flex; gap: 0.8rem; padding: 0.35rem 0.6rem; font-family: var(--mono); font-size: 0.7rem; background: rgba(0, 0, 0, 0.12); }
+.diff__stat-add { color: var(--sage); }
+.diff__stat-del { color: var(--rose); }
+.diff__body { margin: 0; max-height: 18rem; overflow: auto; font-family: var(--mono); font-size: 0.72rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.diff__line { display: flex; gap: 0.4rem; padding: 0 0.6rem; }
+.diff__line--add { background: rgba(141, 156, 107, 0.18); }
+.diff__line--del { background: rgba(192, 125, 84, 0.18); }
+.diff__sign { flex: none; width: 0.8rem; text-align: center; color: var(--ink-faint); user-select: none; }
+.diff__line--add .diff__sign { color: var(--sage); }
+.diff__line--del .diff__sign { color: var(--rose); }
+.diff__text { flex: 1; min-width: 0; }
+
 @media (prefers-reduced-motion: reduce) {
     * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
