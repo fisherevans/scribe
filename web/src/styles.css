@@ -1288,9 +1288,13 @@ button.chip__label:hover { text-decoration: underline; }
 .orphan__suggestslug { font-family: var(--mono); font-size: 0.66rem; color: var(--ink-faint); }
 
 /* Publish: review the whole staged changeset, then commit + push it */
+.publish-wrap {
+    position: fixed; inset: 0; z-index: 120;
+    display: grid; place-items: center; padding: 1.5rem;
+    pointer-events: none;
+}
 .publish {
-    position: fixed; z-index: 120;
-    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    pointer-events: auto;
     width: min(30rem, calc(100vw - 2rem));
     max-height: calc(100dvh - 3rem);
     display: flex; flex-direction: column;
@@ -1303,7 +1307,7 @@ button.chip__label:hover { text-decoration: underline; }
 .publish__sub { font-size: 0.84rem; color: var(--ink-mute); margin: 0; line-height: 1.5; }
 .publish__sub--err { color: var(--rose); font-family: var(--mono); font-size: 0.76rem; word-break: break-word; }
 .publish__hint { font-size: 0.78rem; color: var(--ink-faint); margin: 0.6rem 0 1rem; }
-.publish__list { overflow-y: auto; margin: 0 -0.3rem 1rem; padding: 0 0.3rem; }
+.publish__list { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -0.3rem 1rem; padding: 0 0.3rem; }
 .publish__group { margin-bottom: 0.9rem; }
 .publish__groupname { font-family: var(--mono); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-faint); margin-bottom: 0.4rem; }
 .publish__row { display: flex; align-items: baseline; gap: 0.6rem; padding: 0.35rem 0.5rem; border-radius: 0.5rem; background: var(--desk); margin-bottom: 0.3rem; }

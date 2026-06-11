@@ -33,6 +33,7 @@ export function PublishReview({ open, diff, phase, result, error, onConfirm, onC
             {open && (
                 <>
                     <motion.div className="scrim scrim--modal" onClick={phase === 'publishing' ? undefined : onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
+                    <div className="publish-wrap">
                     <motion.div
                         className="publish"
                         initial={{ opacity: 0, scale: 0.96, y: 8 }}
@@ -92,6 +93,7 @@ export function PublishReview({ open, diff, phase, result, error, onConfirm, onC
                             </>
                         )}
                     </motion.div>
+                    </div>
                 </>
             )}
         </AnimatePresence>
