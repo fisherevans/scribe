@@ -18,8 +18,12 @@ is the practical "how to work in here" companion.
     `SCRIBE_DATA` (default user config dir). **Never** written to the blog repo.
   - `internal/api` - HTTP/JSON. Resources are returned in the shape the web app
     expects (`kind`/`slug`/`state`/`dirty` + fields). Also serves the repo's
-    `public/` so site-relative asset paths resolve. No auth here (swappable,
-    handled upstream).
+    `public/` so site-relative asset paths resolve. No auth here - the
+    `internal/auth` Authenticator wraps this mux in `main` (modes `none`/`oidc`;
+    see docs/oidc.md).
+  - `internal/auth` - pluggable auth. `none` (open) or `oidc` (full OIDC client:
+    Authorization Code + PKCE + refresh, server-side session, optional group
+    gate). Wraps the api mux and registers `/auth/*` + `/api/me` in `main`.
 - **`web/`** - React + Vite + TipTap.
   - `web/src/editor/markdown.ts` - **the critical, riskiest code.** A custom
     `prosemirror-markdown` parser + serializer over the TipTap schema. Block-level

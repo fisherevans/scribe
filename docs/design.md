@@ -65,26 +65,30 @@ scribe must not *depend* on that auth service - it's swappable.
 
 ### Auth (swappable)
 
-scribe never implements login. It consumes identity from whatever sits in front
-of it, or runs open. This keeps it reusable: someone else can run it locally
-with no auth, or front it with Cloudflare Access / oauth2-proxy / their own SSO,
-without inheriting `auth.fisher.sh`.
+scribe's auth is swappable. It can run open, or it can be a full OpenID Connect
+client that owns its own login and session. The original design deliberately
+avoided implementing login (consume identity from a proxy instead); that stance
+has been relaxed - scribe can now *be* the OIDC client, so it's a self-contained
+example of how an app authorizes against an IdP without depending on a
+reverse-proxy gate. Either way scribe stays reusable: run it locally with no
+auth, front it with your own proxy, or point it at any OIDC issuer.
 
-Selected by config (`SCRIBE_AUTH_MODE`):
+Selected by config (`SCRIBE_AUTH_MODE`), implemented as a small `Authenticator`
+interface (`internal/auth`) that wraps the app mux and registers its own routes:
 
-- **`none`** (default) - open. For local dev or a trusted network. Runs out of
-  the box with zero auth setup.
-- **`trusted-header`** - read the authenticated user from a configurable header
-  set by an upstream proxy (`SCRIBE_AUTH_HEADER`, e.g.
-  `Cf-Access-Authenticated-User-Email` for Cloudflare Access, or whatever the
-  Nottingham auth service injects). Fails closed: reject requests missing the
-  header so it can't be bypassed by hitting the pod directly.
+- **`none`** (default) - open. For local dev or a trusted network. Zero setup.
+- **`oidc`** - scribe is a confidential OIDC client. It runs the Authorization
+  Code flow with PKCE, verifies the ID token, keeps a server-side session, and
+  silently refreshes the access token via the refresh token (`offline_access`).
+  Unauthenticated browser navigations are redirected to the IdP; API/XHR calls
+  get 401. Optional group restriction via `SCRIBE_OIDC_ALLOWED_GROUPS`. This is
+  what the Nottingham deploy uses (issuer `auth.fisher.sh` / Authelia). Full
+  setup guide: [oidc.md](oidc.md).
 
-A small `Authenticator` interface with `none` and `trustedHeader` implementations;
-adding a mode later (shared-secret, real OIDC) is one more implementation, not a
-rewrite. Single user means we don't even map identities - presence of a valid
-upstream header is sufficient. The Nottingham deploy uses `trusted-header`
-behind caddy forward-auth; that's just one configuration, not a requirement.
+Adding another mode later (e.g. `trusted-header` for a Cloudflare-Access /
+oauth2-proxy front, or a shared-secret) is one more `Authenticator`
+implementation, not a rewrite. The `internal/api` package stays auth-free; the
+authenticator is wired around its mux in `main`.
 
 ### Staging vs production (the mirror model)
 

@@ -12,11 +12,13 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"io/fs"
 
 	"github.com/fisherevans/scribe/internal/api"
+	"github.com/fisherevans/scribe/internal/auth"
 	"github.com/fisherevans/scribe/internal/content"
 	"github.com/fisherevans/scribe/internal/git"
 	"github.com/fisherevans/scribe/internal/mapping"
@@ -37,6 +39,14 @@ func main() {
 	syncInterval := flag.Duration("sync-interval", envDur("SCRIBE_SYNC_INTERVAL", time.Minute), "how often to pull external edits to the publish branch")
 	webDir := flag.String("web-dir", os.Getenv("SCRIBE_WEB_DIR"), "serve the built UI from this dir (overrides the embedded build)")
 	uploadCmd := flag.String("upload-cmd", os.Getenv("SCRIBE_UPLOAD_CMD"), "shell command run per image upload; receives SCRIBE_UPLOAD_FILE/NAME/EXT/TYPE in env and must print the resulting URL to stdout. Empty: copy into the site's media dir")
+	authMode := flag.String("auth-mode", envOr("SCRIBE_AUTH_MODE", "none"), "authentication mode: none (open) or oidc")
+	oidcIssuer := flag.String("oidc-issuer", os.Getenv("SCRIBE_OIDC_ISSUER"), "OIDC issuer URL (auth-mode=oidc)")
+	oidcClientID := flag.String("oidc-client-id", os.Getenv("SCRIBE_OIDC_CLIENT_ID"), "OIDC client id (auth-mode=oidc)")
+	oidcClientSecret := flag.String("oidc-client-secret", os.Getenv("SCRIBE_OIDC_CLIENT_SECRET"), "OIDC client secret (auth-mode=oidc)")
+	oidcRedirectURL := flag.String("oidc-redirect-url", os.Getenv("SCRIBE_OIDC_REDIRECT_URL"), "OIDC redirect URL, e.g. https://host/auth/callback (auth-mode=oidc)")
+	oidcScopes := flag.String("oidc-scopes", envOr("SCRIBE_OIDC_SCOPES", "openid profile email groups offline_access"), "space-separated OIDC scopes")
+	oidcAllowedGroups := flag.String("oidc-allowed-groups", os.Getenv("SCRIBE_OIDC_ALLOWED_GROUPS"), "comma-separated groups allowed to sign in; empty means any authenticated user")
+	sessionSecret := flag.String("session-secret", os.Getenv("SCRIBE_SESSION_SECRET"), "HMAC key for signing auth cookies (auth-mode=oidc)")
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -93,9 +103,37 @@ func main() {
 		log.Info("no UI bundled, running API-only (use the Vite dev server for the UI)")
 	}
 
+	// Authentication. "none" runs open; "oidc" makes scribe a full OIDC client
+	// that owns its own login + session (see internal/auth and docs/oidc.md).
+	authCfg := auth.Config{
+		Mode:          *authMode,
+		Issuer:        *oidcIssuer,
+		ClientID:      *oidcClientID,
+		ClientSecret:  *oidcClientSecret,
+		RedirectURL:   *oidcRedirectURL,
+		Scopes:        strings.Fields(*oidcScopes),
+		AllowedGroups: splitComma(*oidcAllowedGroups),
+		SessionSecret: []byte(*sessionSecret),
+	}
+	if err := authCfg.Validate(); err != nil {
+		log.Error("auth config invalid", "err", err)
+		os.Exit(1)
+	}
+	authn, err := auth.New(context.Background(), authCfg, log)
+	if err != nil {
+		log.Error("auth init failed", "err", err)
+		os.Exit(1)
+	}
+
+	// Top-level mux: the auth-owned routes (/auth/*, /api/me) sit in front of
+	// the application mux, which runs behind the auth middleware.
+	root := http.NewServeMux()
+	authn.Register(root)
+	root.Handle("/", authn.Wrap(api.New(cstore, notes, mstore, grepo, publicDir, *uploadCmd, ui).Routes()))
+
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           api.New(cstore, notes, mstore, grepo, publicDir, *uploadCmd, ui).Routes(),
+		Handler:           root,
 		ReadHeaderTimeout: 5 * time.Second,
 		// Backstop so a wedged handler returns/closes instead of hanging the
 		// client forever. Generous enough for a publish (squash-merge + push)
@@ -154,6 +192,17 @@ func envOr(key, def string) string {
 func envBool(key string) bool {
 	v := os.Getenv(key)
 	return v == "1" || v == "true"
+}
+
+// splitComma parses a comma-separated list, trimming spaces and dropping empties.
+func splitComma(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func envDur(key string, def time.Duration) time.Duration {

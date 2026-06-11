@@ -60,9 +60,19 @@ the plugin SDK so experiences are forkable folder-based plugins. See
 ## Stack
 
 - **Service** (`cmd/scribe`, `internal/`): Go. File I/O over a blog repo
-  checkout + a private JSON notes store + an HTTP/JSON API. No auth of its own.
+  checkout + a private JSON notes store + an HTTP/JSON API. Pluggable auth
+  (`internal/auth`): runs open by default, or as a full OIDC client.
 - **Web** (`web/`): React + Vite + TipTap. The markdown <-> document pipeline
   lives client-side in `web/src/editor/markdown.ts`.
+
+## Auth
+
+`SCRIBE_AUTH_MODE` selects how scribe authenticates:
+
+- **`none`** (default) - open; for local dev or a trusted network.
+- **`oidc`** - scribe is an OpenID Connect client (Authorization Code + PKCE +
+  refresh, server-side session, optional group restriction). Point it at any
+  OIDC issuer. See [docs/oidc.md](docs/oidc.md).
 
 ## Run locally
 
