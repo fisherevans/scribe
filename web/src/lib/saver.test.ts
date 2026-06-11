@@ -48,6 +48,22 @@ describe('Saver', () => {
         expect(versions[1]).toBe('v2') // the fix: not the stale 'v1'
     })
 
+    // With a multi-second debounce, editing several docs inside one window must
+    // not drop any save - the reason pending is a per-resource map, not one slot.
+    it('keeps a pending edit per resource (no drop across docs)', async () => {
+        const saved: string[] = []
+        const save = vi.fn(async (_c: string, slug: string, data: Resource) => {
+            saved.push(slug)
+            return { ...data, version: 'v2' }
+        })
+        const saver = new Saver(silent, save as never, 5)
+        saver.request('posts', res('a', 'A', 'v1'))
+        saver.request('posts', res('b', 'B', 'v1')) // different doc, same debounce window
+        await sleep(20)
+        expect(save).toHaveBeenCalledTimes(2)
+        expect([...saved].sort()).toEqual(['a', 'b'])
+    })
+
     it('retries a transient failure and recovers', async () => {
         const states: string[] = []
         let n = 0

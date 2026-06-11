@@ -386,6 +386,21 @@ export default function App() {
     const editingRef = useRef(false)
     useEffect(() => { editingRef.current = editMode || status === 'edited' || status === 'saving' || status === 'error' || saver.dirty }, [editMode, status, saver])
 
+    // Leaving with unsaved work: browsers won't let us run an async save and then
+    // conditionally allow navigation, so fire a best-effort flush and trip the
+    // native "unsaved changes" prompt. The per-keystroke localStorage draft is the
+    // real backstop - if they leave anyway, reload-recovery surfaces it.
+    useEffect(() => {
+        const onBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (!saver.dirty && !saveError) return
+            saver.flush()
+            e.preventDefault()
+            e.returnValue = ''
+        }
+        window.addEventListener('beforeunload', onBeforeUnload)
+        return () => window.removeEventListener('beforeunload', onBeforeUnload)
+    }, [saver, saveError])
+
     // Poll git sync status: a changed rev means content moved (an external Pages
     // CMS edit was pulled in) -> refetch; a conflict raises the banner.
     const lastRevRef = useRef<string | null>(null)
@@ -528,9 +543,10 @@ export default function App() {
 
     // Open a referenced resource for editing (from the reference picker).
     const openResource = useCallback((c: string, slug: string) => {
+        saver.flush()
         setCollection(c); setSel((cur) => ({ ...cur, [c]: slug })); writeHash(c, slug)
         setEditMode(false); setDetails(false); setStatus('idle')
-    }, [])
+    }, [saver])
 
     // Materialize a resource for a slug that's referenced by content but has no
     // file yet (an "undefined" tag). Seeds a titleized name, then opens it.
@@ -577,12 +593,14 @@ export default function App() {
     )
 
     const select = useCallback((slug: string) => {
+        saver.flush() // push any pending save for the doc we're leaving
         setSel((cur) => ({ ...cur, [collection]: slug })); writeHash(collection, slug); setEditMode(false); setStatus('idle'); setDrawer(false); setConflict(null)
-    }, [collection])
+    }, [collection, saver])
 
     const switchCollection = useCallback((c: string) => {
+        saver.flush()
         setCollection(c); writeHash(c, sel[c] ?? null); setEditMode(false); setStatus('idle'); setDetails(false)
-    }, [sel])
+    }, [sel, saver])
 
     const startResize = useCallback((e: React.PointerEvent) => {
         e.preventDefault()
