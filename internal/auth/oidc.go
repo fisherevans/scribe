@@ -53,6 +53,20 @@ func newOIDC(ctx context.Context, cfg Config, log *slog.Logger) (*oidcAuth, erro
 	}
 	_ = provider.Claims(&disco)
 
+	// Session store: SQLite-persisted when a path is configured (survives a
+	// restart), else in-memory (restart = re-login).
+	var store sessionStore = newMemStore()
+	if cfg.SessionDBPath != "" {
+		ss, err := newSQLiteStore(cfg.SessionDBPath, log)
+		if err != nil {
+			return nil, fmt.Errorf("session store: %w", err)
+		}
+		store = ss
+		log.Info("auth: persisting sessions to sqlite", "path", cfg.SessionDBPath)
+	} else {
+		log.Info("auth: sessions are in-memory (restart forces re-login)")
+	}
+
 	log.Info("auth mode: oidc", "issuer", cfg.Issuer, "client_id", cfg.ClientID,
 		"scopes", scopes, "allowed_groups", cfg.AllowedGroups)
 	return &oidcAuth{
@@ -66,7 +80,7 @@ func newOIDC(ctx context.Context, cfg Config, log *slog.Logger) (*oidcAuth, erro
 			RedirectURL:  cfg.RedirectURL,
 			Scopes:       scopes,
 		},
-		sessions:      newMemStore(),
+		sessions:      store,
 		secret:        cfg.SessionSecret,
 		allowedGroups: allowed,
 		endSession:    disco.EndSession,

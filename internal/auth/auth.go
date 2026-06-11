@@ -54,6 +54,7 @@ type Config struct {
 	Scopes        []string // default: openid profile email groups offline_access
 	AllowedGroups []string // optional; if set, the user must be in one of these
 	SessionSecret []byte   // HMAC key for the flow-state cookie + session ids
+	SessionDBPath string   // empty = in-memory sessions; set = persist to this SQLite file (survives restarts)
 }
 
 // New builds the Authenticator for cfg.Mode. The context is used for OIDC

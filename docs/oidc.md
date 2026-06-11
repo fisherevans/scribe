@@ -11,7 +11,9 @@ at the end.
 
 - Runs **Authorization Code + PKCE (S256)** with `state` + `nonce`.
 - Verifies the ID token, then keeps a **server-side session** keyed by a
-  `Secure; HttpOnly; SameSite=Lax` cookie (`scribe_session`).
+  `Secure; HttpOnly; SameSite=Lax` cookie (`scribe_session`). Sessions persist
+  to a **SQLite** file by default (so a restart doesn't log everyone out); set
+  `SCRIBE_SESSION_DB=memory` for in-memory instead.
 - **Refreshes** the access token transparently via the refresh token
   (`offline_access`) for the life of the session, so users aren't bounced when
   the access token's short TTL expires.
@@ -35,6 +37,7 @@ All flags have `SCRIBE_*` env equivalents.
 | `SCRIBE_SESSION_SECRET` | yes | | random ≥32-char string; HMAC key for the short-lived login-flow cookie |
 | `SCRIBE_OIDC_SCOPES` | no | `openid profile email groups offline_access` | space-separated; keep `offline_access` for refresh |
 | `SCRIBE_OIDC_ALLOWED_GROUPS` | no | (any) | comma-separated; if set, the user's `groups` claim must intersect, else `403` |
+| `SCRIBE_SESSION_DB` | no | `<data>/auth-sessions.db` | SQLite path persisting sessions across restarts. Set to `memory` to keep sessions in-process (lost on restart). Put it on durable storage (a mounted volume) to actually survive restarts. |
 
 ## Routes scribe adds
 
@@ -65,9 +68,10 @@ Hand the client id + secret to scribe via the env vars above.
   If `SCRIBE_OIDC_ALLOWED_GROUPS` never matches, check your IdP actually emits a
   `groups` claim for the `groups` scope (some need an explicit claims/scope
   mapping).
-- **Sessions are in-memory.** A scribe restart logs everyone out (the session
-  store is an interface, so a persistent/shared backend can be added later).
-  This is fine for a single replica; running >1 replica needs a shared store.
+- **Sessions persist to SQLite by default** (`<data>/auth-sessions.db`), so a
+  restart keeps everyone logged in - put the data dir on durable storage. Use
+  `SCRIBE_SESSION_DB=memory` to opt out. The SQLite store is single-writer; for
+  >1 replica you'd want a shared backend (the store is behind an interface).
 - **HTTPS.** Cookies are marked `Secure` when `SCRIBE_OIDC_REDIRECT_URL` is
   `https://...`. For local http testing, the cookie won't be sent over http -
   use `none` mode for local dev, or terminate TLS in front.

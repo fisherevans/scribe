@@ -47,6 +47,7 @@ func main() {
 	oidcScopes := flag.String("oidc-scopes", envOr("SCRIBE_OIDC_SCOPES", "openid profile email groups offline_access"), "space-separated OIDC scopes")
 	oidcAllowedGroups := flag.String("oidc-allowed-groups", os.Getenv("SCRIBE_OIDC_ALLOWED_GROUPS"), "comma-separated groups allowed to sign in; empty means any authenticated user")
 	sessionSecret := flag.String("session-secret", os.Getenv("SCRIBE_SESSION_SECRET"), "HMAC key for signing auth cookies (auth-mode=oidc)")
+	sessionDB := flag.String("session-db", os.Getenv("SCRIBE_SESSION_DB"), "path to a SQLite file persisting auth sessions across restarts; 'memory' (or empty in non-oidc) keeps sessions in-memory. Default: <data>/auth-sessions.db in oidc mode")
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -105,6 +106,17 @@ func main() {
 
 	// Authentication. "none" runs open; "oidc" makes scribe a full OIDC client
 	// that owns its own login + session (see internal/auth and docs/oidc.md).
+	// Default oidc sessions to a SQLite file under the data dir so they survive
+	// restarts; "memory" opts out.
+	sessionDBPath := *sessionDB
+	if strings.EqualFold(*authMode, "oidc") {
+		switch {
+		case strings.EqualFold(sessionDBPath, "memory"):
+			sessionDBPath = ""
+		case sessionDBPath == "":
+			sessionDBPath = filepath.Join(*data, "auth-sessions.db")
+		}
+	}
 	authCfg := auth.Config{
 		Mode:          *authMode,
 		Issuer:        *oidcIssuer,
@@ -114,6 +126,7 @@ func main() {
 		Scopes:        strings.Fields(*oidcScopes),
 		AllowedGroups: splitComma(*oidcAllowedGroups),
 		SessionSecret: []byte(*sessionSecret),
+		SessionDBPath: sessionDBPath,
 	}
 	if err := authCfg.Validate(); err != nil {
 		log.Error("auth config invalid", "err", err)

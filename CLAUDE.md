@@ -22,8 +22,9 @@ is the practical "how to work in here" companion.
     `internal/auth` Authenticator wraps this mux in `main` (modes `none`/`oidc`;
     see docs/oidc.md).
   - `internal/auth` - pluggable auth. `none` (open) or `oidc` (full OIDC client:
-    Authorization Code + PKCE + refresh, server-side session, optional group
-    gate). Wraps the api mux and registers `/auth/*` + `/api/me` in `main`.
+    Authorization Code + PKCE + refresh, SQLite-persisted server-side session
+    (`SCRIBE_SESSION_DB`, `memory` to opt out), optional group gate). Wraps the
+    api mux and registers `/auth/*` + `/api/me` in `main`.
 - **`web/`** - React + Vite + TipTap.
   - `web/src/editor/markdown.ts` - **the critical, riskiest code.** A custom
     `prosemirror-markdown` parser + serializer over the TipTap schema. Block-level
