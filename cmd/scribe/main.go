@@ -7,16 +7,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"log/slog"
-	"net/http"
-	"os"
-	"os/signal"
-	"path/filepath"
-	"strings"
-	"time"
-
-	"io/fs"
-
 	"github.com/fisherevans/scribe/internal/api"
 	"github.com/fisherevans/scribe/internal/auth"
 	"github.com/fisherevans/scribe/internal/content"
@@ -25,6 +15,14 @@ import (
 	"github.com/fisherevans/scribe/internal/schema"
 	"github.com/fisherevans/scribe/internal/store"
 	"github.com/fisherevans/scribe/internal/webui"
+	"io/fs"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"strings"
+	"time"
 )
 
 func main() {
@@ -37,6 +35,8 @@ func main() {
 	push := flag.Bool("push", envBool("SCRIBE_PUSH"), "push staging/main to origin on commit/promote")
 	backupInterval := flag.Duration("backup-interval", envDur("SCRIBE_BACKUP_INTERVAL", 2*time.Minute), "how often to back up staging to origin")
 	syncInterval := flag.Duration("sync-interval", envDur("SCRIBE_SYNC_INTERVAL", time.Minute), "how often to pull external edits to the publish branch")
+	checkpointIdle := flag.Duration("checkpoint-idle", envDur("SCRIBE_CHECKPOINT_IDLE", 5*time.Minute), "an editing pause longer than this starts a new version checkpoint")
+	checkpointMax := flag.Duration("checkpoint-max", envDur("SCRIBE_CHECKPOINT_MAX", 10*time.Minute), "cap on how long one continuous-editing checkpoint grows before it seals")
 	webDir := flag.String("web-dir", os.Getenv("SCRIBE_WEB_DIR"), "serve the built UI from this dir (overrides the embedded build)")
 	uploadCmd := flag.String("upload-cmd", os.Getenv("SCRIBE_UPLOAD_CMD"), "shell command run per image upload; receives SCRIBE_UPLOAD_FILE/NAME/EXT/TYPE in env and must print the resulting URL to stdout. Empty: copy into the site's media dir")
 	authMode := flag.String("auth-mode", envOr("SCRIBE_AUTH_MODE", "none"), "authentication mode: none (open) or oidc")
@@ -88,8 +88,10 @@ func main() {
 			gitErr = err.Error()
 			log.Warn("git sync disabled, running write-only", "err", err)
 		} else {
+			grepo.SetCheckpointWindow(*checkpointIdle, *checkpointMax)
 			st, mn := grepo.Branches()
-			log.Info("git sync enabled", "staging", st, "main", mn, "push", *push)
+			log.Info("git sync enabled", "staging", st, "main", mn, "push", *push,
+				"checkpointIdle", *checkpointIdle, "checkpointMax", *checkpointMax)
 		}
 	}
 

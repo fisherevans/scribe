@@ -5,15 +5,21 @@
 //
 // Model: scribe is a content-curation tool. Its job ends at the commit.
 //
-//   - Every edit (save/delete/rename) is committed to the staging branch.
-//     Consecutive edits to the same resource are squashed (amended) so a
-//     writing session is one commit, not one-per-keystroke-save.
+//   - Every edit (save/delete/rename) is committed to the staging branch, but
+//     edits are checkpointed into sessions, not one commit per autosave.
+//     Consecutive saves of the same resource amend a single HEAD commit while
+//     the session is live; it seals into a distinct checkpoint when editing
+//     goes idle (idleGap), the session ages out (maxSession), or a different
+//     resource is edited. Sealing is independent of pushing - see Commit. The
+//     resulting per-resource history is what the editor's version drawer reads
+//     (History / FileAt in history.go).
 //   - Promote is per-resource: it brings that one file's staged version onto
 //     the main branch and commits it. You can stage many drafts and publish
 //     them individually.
 //   - When a remote is configured (Push enabled), commits and promotions are
-//     pushed. A separate downstream pipeline renders/publishes from the
-//     branches - scribe does not build or deploy.
+//     pushed. Because checkpointing amends the open commit, its backup push is
+//     force-with-lease. A separate downstream pipeline renders/publishes from
+//     the branches - scribe does not build or deploy.
 //
 // Concurrency: HTTP handlers call these methods concurrently. Local git work
 // (index/working-tree ops) is serialized by `mu`; network ops (push/fetch) run
@@ -43,6 +49,13 @@ const (
 	// fresh `git diff`. Short enough to feel live, long enough to collapse the
 	// burst of list requests a page load fires.
 	stagedCacheTTL = 3 * time.Second
+
+	// Session-checkpoint defaults (overridable via SetCheckpointWindow). A pause
+	// longer than defaultIdleGap starts a new checkpoint; a single continuous
+	// session seals once it is older than defaultMaxSession. Tuned so a focused
+	// hour on one post is a handful of versions, not one-per-autosave.
+	defaultIdleGap    = 5 * time.Minute
+	defaultMaxSession = 10 * time.Minute
 )
 
 // SyncStatus is the live state of scribe's git syncing, surfaced to the UI. Rev
@@ -68,9 +81,21 @@ type Repo struct {
 	// mu guards local git state (the index/working tree and the head bookkeeping
 	// below). Network ops do NOT hold it - they use netMu - so a slow or stuck
 	// push/fetch never blocks a read like StagedPaths.
-	mu         sync.Mutex
-	headSlug   string // resource key of the staging HEAD commit scribe made ("" if none/foreign)
-	headPushed bool   // has the current staging HEAD been pushed?
+	mu       sync.Mutex
+	headSlug string // resource key of the staging HEAD commit scribe made ("" if none/foreign)
+
+	// Session checkpointing. Saves to the same resource fold (amend) into one
+	// HEAD commit while a session is live; a new commit (checkpoint) starts when
+	// the session seals - on an idle gap, when it ages past maxSession, or when a
+	// different resource is edited. Sealing is independent of pushing: backups
+	// force-push the open commit, but a push never ends a session (that decoupling
+	// is the whole point - it stops every autosave from becoming its own commit).
+	// now is an injectable clock for tests.
+	now          func() time.Time
+	idleGap      time.Duration
+	maxSession   time.Duration
+	sessionStart time.Time // start of the open HEAD's session (zero when headSlug == "")
+	lastEdit     time.Time // most recent edit folded into the open HEAD
 
 	netMu sync.Mutex // serializes network ops (push/fetch); held instead of mu
 
@@ -91,7 +116,10 @@ type Repo struct {
 // staging defaults to "staging". If push is true, a remote named "origin" is
 // expected and commits/promotions are pushed.
 func Open(dir, staging, main string, push bool) (*Repo, error) {
-	r := &Repo{dir: dir, staging: staging, main: main, remote: "origin", push: push}
+	r := &Repo{
+		dir: dir, staging: staging, main: main, remote: "origin", push: push,
+		now: time.Now, idleGap: defaultIdleGap, maxSession: defaultMaxSession,
+	}
 	if r.staging == "" {
 		r.staging = "staging"
 	}
@@ -179,9 +207,9 @@ func (r *Repo) adoptWorkingTree() error {
 	if _, err := r.run("commit", "-m", "scribe: recover uncommitted changes on startup"); err != nil {
 		return fmt.Errorf("commit recovered changes: %w", err)
 	}
-	// Not a per-resource commit: clear the squash head so the next save starts a
+	// Not a per-resource commit: clear the session so the next save starts a
 	// fresh commit rather than amending onto this recovery one.
-	r.headSlug, r.headPushed = "", false
+	r.headSlug, r.sessionStart, r.lastEdit = "", time.Time{}, time.Time{}
 	r.invalidateStaged()
 	return nil
 }
@@ -251,7 +279,8 @@ func (r *Repo) commitLocal(slug string, paths []string, summary string) (amend, 
 	} else if clean {
 		return false, false, nil // save produced no change
 	}
-	amend = r.headSlug == slug && !r.headPushed
+	now := r.now()
+	amend = r.headSlug == slug && r.sessionLive(now)
 	args := []string{"commit", "-m", summary}
 	if amend {
 		args = []string{"commit", "--amend", "-m", summary}
@@ -259,24 +288,59 @@ func (r *Repo) commitLocal(slug string, paths []string, summary string) (amend, 
 	if _, e := r.run(args...); e != nil {
 		return false, false, fmt.Errorf("commit: %w", e)
 	}
-	r.headSlug, r.headPushed = slug, false
+	if amend {
+		r.lastEdit = now // same session - refresh activity, keep sessionStart
+	} else {
+		r.sessionStart, r.lastEdit = now, now // a fresh checkpoint
+	}
+	r.headSlug = slug
 	r.invalidateStaged()
 	return amend, true, nil
 }
 
-// pushStaging pushes the staging branch outside r.mu (serialized by netMu), then
-// records that the head has been pushed.
+// sessionLive reports whether the open HEAD commit is still an active editing
+// session that the next save should fold into, rather than starting a new
+// checkpoint. A session stays live until it goes idle (no edit within idleGap)
+// or ages out (older than maxSession). Caller holds r.mu.
+func (r *Repo) sessionLive(now time.Time) bool {
+	if r.headSlug == "" || r.sessionStart.IsZero() {
+		return false
+	}
+	return now.Sub(r.lastEdit) <= r.idleGap && now.Sub(r.sessionStart) <= r.maxSession
+}
+
+// SetCheckpointWindow tunes session checkpointing: idle is how long a pause can
+// run before the next edit starts a new checkpoint; max caps how long one
+// continuous-editing checkpoint grows before it seals. Non-positive values keep
+// the current setting. Call at startup, before serving.
+func (r *Repo) SetCheckpointWindow(idle, max time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if idle > 0 {
+		r.idleGap = idle
+	}
+	if max > 0 {
+		r.maxSession = max
+	}
+}
+
+// Seal ends the current editing session so the next Commit starts a fresh
+// checkpoint instead of amending. Used before a restore so it lands as its own
+// version rather than folding into whatever was being edited.
+func (r *Repo) Seal() {
+	r.mu.Lock()
+	r.headSlug, r.sessionStart, r.lastEdit = "", time.Time{}, time.Time{}
+	r.mu.Unlock()
+}
+
+// pushStaging pushes the staging branch outside r.mu (serialized by netMu).
+// force is set when the HEAD was amended (session checkpointing rewrites the
+// open commit), so the push must overwrite the previously-pushed tip.
 func (r *Repo) pushStaging(force bool) error {
 	r.netMu.Lock()
 	err := r.pushBranch(r.staging, force)
 	r.netMu.Unlock()
-	if err != nil {
-		return err
-	}
-	r.mu.Lock()
-	r.headPushed = true
-	r.mu.Unlock()
-	return nil
+	return err
 }
 
 // Change is one path's difference between main and staging.
@@ -417,7 +481,7 @@ func (r *Repo) Publish(summary string) (int, error) {
 	if _, err := r.run("reset", "--hard", r.main); err != nil {
 		return 0, fmt.Errorf("reset staging to main: %w", err)
 	}
-	r.headSlug, r.headPushed = "", false
+	r.headSlug, r.sessionStart, r.lastEdit = "", time.Time{}, time.Time{}
 	r.invalidateStaged()
 	if r.push {
 		if err := r.pushBranch(r.staging, true); err != nil {
