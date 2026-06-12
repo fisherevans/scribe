@@ -1523,26 +1523,33 @@ button.chip__label:hover { text-decoration: underline; }
 }
 .hist__empty { padding: 0.9rem; font-size: 0.85rem; color: var(--ink-faintest); }
 .hist__item {
-    width: 100%; display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.6rem 0.7rem; border: none; border-radius: 0.4rem; cursor: pointer;
+    width: 100%; display: flex; flex-direction: column; align-items: stretch; gap: 0.35rem;
+    padding: 0.55rem 0.7rem; border: none; border-radius: 0.4rem; cursor: pointer;
     background: none; color: var(--ink); text-align: left; font-size: 0.9rem;
 }
 .hist__item:hover { background: var(--brass-soft); }
 .hist__item.is-sel { background: var(--brass-soft); box-shadow: inset 3px 0 0 var(--brass); }
-.hist__when { flex: 1; min-width: 0; }
+.hist__row1 { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.hist__row2 { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.hist__when { min-width: 0; }
 .hist__size { font-family: var(--mono); font-size: 0.78rem; display: flex; gap: 0.4rem; font-weight: 600; }
 .hist__add { color: var(--diff-add-fg); }
 .hist__del { color: var(--diff-del-fg); }
 .hist__nochg { color: var(--ink-faintest); }
-/* the draft/published pill = the frontmatter `draft` field at this version */
+/* axis 1: the draft/published pill = the frontmatter `draft` field at this version */
 .hist__pill { flex: none; font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 0.1rem 0.4rem; border-radius: 0.7rem; }
 .hist__pill.is-draft { background: var(--brass-soft); color: var(--brass-deep); border: 1px solid rgba(192, 136, 59, 0.45); }
 .hist__pill.is-pub { background: var(--diff-add-bg); color: var(--diff-add-fg); border: 1px solid rgba(34, 160, 70, 0.4); }
-/* the git dot = on main (filled) vs staging-only (hollow); neutral, so it reads
-   as a different axis than the colored draft pill */
-.hist__dot { flex: none; width: 0.55rem; height: 0.55rem; border-radius: 50%; border: 1px solid var(--ink-faintest); }
-.hist__dot.is-pub { background: var(--ink-soft); border-color: var(--ink-soft); }
-.hist__dot.is-staging { background: transparent; }
+/* axis 2: was this version live online (the head of main) - now, in a past
+   window, or never. Distinct shape (square-ish, no caps) from the draft pill. */
+.hist__live { flex: none; font-size: 0.64rem; font-weight: 600; padding: 0.1rem 0.4rem; border-radius: 0.3rem; }
+.hist__live.is-live { background: var(--diff-add-fg); color: #fff; }
+.hist__live.is-was { background: transparent; color: var(--ink-soft); border: 1px solid var(--paper-line); }
+.hist__live.is-never { background: transparent; color: var(--ink-faintest); border: 1px dashed var(--paper-line); }
+/* preview metadata strip: full draft + live detail for the selected version */
+.hist__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; font-size: 0.82rem; color: var(--ink-soft); padding-bottom: 0.4rem; border-bottom: 1px solid var(--paper-line); }
+.hist__metawhen { font-family: var(--mono); font-size: 0.78rem; color: var(--ink); }
+.hist__metalive { color: var(--ink-soft); }
 .hist__preview { padding: 1rem 1.3rem; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 /* the diff/full-version view grows to fill the tall panel */
 .hist__preview .diff { flex: 1; margin-top: 0.5rem; }

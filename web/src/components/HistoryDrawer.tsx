@@ -1,7 +1,41 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type Checkpoint } from '../api'
 import type { Resource } from '../types'
 import { DiffView } from './DiffView'
+
+// Live status of a version: whether it was ever the head of main (the deployed,
+// online instance) and for what window. Because publish squash-merges staging
+// onto main, a version is "live" only while it's main's head; staging
+// checkpoints that get squashed away were never online on their own.
+type Live =
+    | { kind: 'live'; from: string } // currently the published head (online now)
+    | { kind: 'was'; from: string; until: string } // was online for [from, until)
+    | { kind: 'never' } // only ever on staging - never pushed to main
+
+// liveWindows walks the checkpoints (newest first) and assigns each its live
+// status. The newest on-main commit is live now; each older on-main commit was
+// live until the next-newer on-main commit superseded it; staging-only commits
+// were never online.
+function liveWindows(list: Checkpoint[] | null): Map<string, Live> {
+    const m = new Map<string, Live>()
+    if (!list) return m
+    let seenLive = false
+    let newerMainTime: string | null = null
+    for (const c of list) {
+        if (!c.published) {
+            m.set(c.hash, { kind: 'never' })
+            continue
+        }
+        if (!seenLive) {
+            m.set(c.hash, { kind: 'live', from: c.time })
+            seenLive = true
+        } else {
+            m.set(c.hash, { kind: 'was', from: c.time, until: newerMainTime! })
+        }
+        newerMainTime = c.time
+    }
+    return m
+}
 
 interface Props {
     collection: string
@@ -36,6 +70,10 @@ export function HistoryDrawer({ collection, slug, current, draftField, onClose, 
 
     // Cache fetched version bodies so flipping the compare base doesn't refetch.
     const bodies = useRef(new Map<string, string>())
+
+    // Per-version live (published-online) status, derived from the on-main commits.
+    const live = useMemo(() => liveWindows(list), [list])
+    const selCp = list?.find((c) => c.hash === sel) ?? null
 
     useEffect(() => {
         api.history(collection, slug).then(setList).catch((e) => setError(String(e)))
@@ -134,14 +172,18 @@ export function HistoryDrawer({ collection, slug, current, draftField, onClose, 
                                     className={'hist__item' + (sel === c.hash ? ' is-sel' : '')}
                                     onClick={() => setSel(c.hash)}
                                 >
-                                    <span className="hist__when" title={new Date(c.time).toLocaleString()}>{ago(c.time)}</span>
-                                    {draftStateOf(c, draftField)}
-                                    <span className="hist__size">
-                                        {c.added > 0 && <span className="hist__add">+{c.added}</span>}
-                                        {c.removed > 0 && <span className="hist__del">-{c.removed}</span>}
-                                        {c.added === 0 && c.removed === 0 && <span className="hist__nochg">·</span>}
+                                    <span className="hist__row1">
+                                        <span className="hist__when" title={new Date(c.time).toLocaleString()}>{ago(c.time)}</span>
+                                        <span className="hist__size">
+                                            {c.added > 0 && <span className="hist__add">+{c.added}</span>}
+                                            {c.removed > 0 && <span className="hist__del">-{c.removed}</span>}
+                                            {c.added === 0 && c.removed === 0 && <span className="hist__nochg">·</span>}
+                                        </span>
                                     </span>
-                                    <span className={'hist__dot ' + (c.published ? 'is-pub' : 'is-staging')} title={c.published ? 'on main (pushed)' : 'staging only (not yet pushed)'} />
+                                    <span className="hist__row2">
+                                        {draftStateOf(c, draftField)}
+                                        {liveBadge(live.get(c.hash))}
+                                    </span>
                                 </button>
                             </li>
                         ))}
@@ -151,6 +193,13 @@ export function HistoryDrawer({ collection, slug, current, draftField, onClose, 
                         {!version && <div className="hist__hint">Pick a version to preview it, or compare any two.</div>}
                         {version && (
                             <>
+                                {selCp && (
+                                    <div className="hist__meta">
+                                        <span className="hist__metawhen" title={new Date(selCp.time).toLocaleString()}>{fmtDate(selCp.time)}</span>
+                                        {draftStateOf(selCp, draftField)}
+                                        <span className="hist__metalive">{liveDetail(live.get(selCp.hash))}</span>
+                                    </div>
+                                )}
                                 <div className="hist__bar">
                                     <div className="hist__toggle">
                                         <button type="button" className={mode === 'diff' ? 'is-on' : ''} onClick={() => setMode('diff')}>diff</button>
@@ -207,6 +256,31 @@ function draftStateOf(c: Checkpoint, draftField?: string) {
             {isDraft ? 'draft' : 'published'}
         </span>
     )
+}
+
+// liveBadge renders the published-online status pill: live now, was-live (with
+// the window in the tooltip), or never published.
+function liveBadge(l: Live | undefined) {
+    if (!l) return null
+    if (l.kind === 'live') {
+        return <span className="hist__live is-live" title={`currently published online (since ${fmtDate(l.from)})`}>● live</span>
+    }
+    if (l.kind === 'was') {
+        return <span className="hist__live is-was" title={`was online ${fmtDate(l.from)} – ${fmtDate(l.until)}`}>published</span>
+    }
+    return <span className="hist__live is-never" title="never pushed to main (a staging checkpoint)">unpublished</span>
+}
+
+// liveDetail is the long-form line for the preview pane.
+function liveDetail(l: Live | undefined): string {
+    if (!l) return ''
+    if (l.kind === 'live') return `live online now (since ${fmtDate(l.from)})`
+    if (l.kind === 'was') return `was live online ${fmtDate(l.from)} – ${fmtDate(l.until)}`
+    return 'never published online (staging-only checkpoint)'
+}
+
+function fmtDate(iso: string): string {
+    return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
 function msOf(list: Checkpoint[] | null, hash: string): number {
