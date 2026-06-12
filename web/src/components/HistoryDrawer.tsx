@@ -251,36 +251,51 @@ export function HistoryDrawer({ collection, slug, current, draftField, onClose, 
 function draftStateOf(c: Checkpoint, draftField?: string) {
     if (!draftField || !c.fields) return null
     const isDraft = c.fields[draftField] === true
+    // Show the literal field value (draft=true/false) so it never reads as the
+    // same word as the live/published axis.
     return (
-        <span className={'hist__pill ' + (isDraft ? 'is-draft' : 'is-pub')} title={isDraft ? 'marked draft at this version' : 'not a draft (published) at this version'}>
-            {isDraft ? 'draft' : 'published'}
+        <span className={'hist__pill ' + (isDraft ? 'is-draft' : 'is-pub')} title="the post's draft frontmatter field at this version">
+            draft={isDraft ? 'true' : 'false'}
         </span>
     )
 }
 
-// liveBadge renders the published-online status pill: live now, was-live (with
-// the window in the tooltip), or never published.
+// liveBadge renders the online status pill, framed around the live window:
+// "live now", "was live <duration>", or "never live".
 function liveBadge(l: Live | undefined) {
     if (!l) return null
     if (l.kind === 'live') {
-        return <span className="hist__live is-live" title={`currently published online (since ${fmtDate(l.from)})`}>● live</span>
+        return <span className="hist__live is-live" title={`live online now - the published head since ${fmtDate(l.from)}`}>live now</span>
     }
     if (l.kind === 'was') {
-        return <span className="hist__live is-was" title={`was online ${fmtDate(l.from)} – ${fmtDate(l.until)}`}>published</span>
+        return <span className="hist__live is-was" title={`was live online ${fmtDate(l.from)} – ${fmtDate(l.until)}`}>was live {dur(l.from, l.until)}</span>
     }
-    return <span className="hist__live is-never" title="never pushed to main (a staging checkpoint)">unpublished</span>
+    return <span className="hist__live is-never" title="never pushed to main - a staging checkpoint that didn't go online">never live</span>
 }
 
 // liveDetail is the long-form line for the preview pane.
 function liveDetail(l: Live | undefined): string {
     if (!l) return ''
     if (l.kind === 'live') return `live online now (since ${fmtDate(l.from)})`
-    if (l.kind === 'was') return `was live online ${fmtDate(l.from)} – ${fmtDate(l.until)}`
-    return 'never published online (staging-only checkpoint)'
+    if (l.kind === 'was') return `was live online for ${dur(l.from, l.until)} (${fmtDate(l.from)} – ${fmtDate(l.until)})`
+    return 'never went online (staging-only checkpoint)'
 }
 
 function fmtDate(iso: string): string {
     return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+// dur renders a compact human duration between two timestamps: "45m", "3h",
+// "7d", "2mo".
+function dur(from: string, until: string): string {
+    const ms = Math.max(0, new Date(until).getTime() - new Date(from).getTime())
+    const m = ms / 60000
+    if (m < 60) return `${Math.max(1, Math.round(m))}m`
+    const h = m / 60
+    if (h < 24) return `${Math.round(h)}h`
+    const d = h / 24
+    if (d < 30) return `${Math.round(d)}d`
+    return `${Math.round(d / 30)}mo`
 }
 
 function msOf(list: Checkpoint[] | null, hash: string): number {

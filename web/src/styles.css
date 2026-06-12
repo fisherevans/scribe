@@ -1474,6 +1474,9 @@ button.chip__label:hover { text-decoration: underline; }
     --diff-del-bg: rgba(200, 45, 32, 0.10);
     --diff-add-hl: rgba(34, 160, 70, 0.42);
     --diff-del-hl: rgba(200, 45, 32, 0.34);
+    /* A clean sans for tiny UI labels (pills): the serif body font is hard to
+       read at pill sizes. */
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
 }
 .diff { margin-top: 0.6rem; border: 1px solid var(--paper-line); border-radius: 0.45rem; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
 .diff--empty { padding: 0.7rem 0.85rem; font-size: 0.85rem; color: var(--ink-faint); }
@@ -1525,7 +1528,7 @@ button.chip__label:hover { text-decoration: underline; }
 .hist__item {
     width: 100%; display: flex; flex-direction: column; align-items: stretch; gap: 0.35rem;
     padding: 0.55rem 0.7rem; border: none; border-radius: 0.4rem; cursor: pointer;
-    background: none; color: var(--ink); text-align: left; font-size: 0.9rem;
+    background: none; color: var(--ink); text-align: left; font-family: var(--sans); font-size: 0.86rem;
 }
 .hist__item:hover { background: var(--brass-soft); }
 .hist__item.is-sel { background: var(--brass-soft); box-shadow: inset 3px 0 0 var(--brass); }
@@ -1536,18 +1539,18 @@ button.chip__label:hover { text-decoration: underline; }
 .hist__add { color: var(--diff-add-fg); }
 .hist__del { color: var(--diff-del-fg); }
 .hist__nochg { color: var(--ink-faintest); }
-/* axis 1: the draft/published pill = the frontmatter `draft` field at this version */
-.hist__pill { flex: none; font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 0.1rem 0.4rem; border-radius: 0.7rem; }
+/* axis 1: the literal draft frontmatter field at this version (draft=true/false) */
+.hist__pill { flex: none; font-family: var(--sans); font-size: 0.7rem; font-weight: 600; letter-spacing: 0; padding: 0.12rem 0.45rem; border-radius: 0.7rem; white-space: nowrap; }
 .hist__pill.is-draft { background: var(--brass-soft); color: var(--brass-deep); border: 1px solid rgba(192, 136, 59, 0.45); }
 .hist__pill.is-pub { background: var(--diff-add-bg); color: var(--diff-add-fg); border: 1px solid rgba(34, 160, 70, 0.4); }
-/* axis 2: was this version live online (the head of main) - now, in a past
-   window, or never. Distinct shape (square-ish, no caps) from the draft pill. */
-.hist__live { flex: none; font-size: 0.64rem; font-weight: 600; padding: 0.1rem 0.4rem; border-radius: 0.3rem; }
+/* axis 2: was this version live online (the head of main) - now, for a past
+   window (duration), or never. Distinct shape (square-ish) from the draft pill. */
+.hist__live { flex: none; font-family: var(--sans); font-size: 0.7rem; font-weight: 600; padding: 0.12rem 0.45rem; border-radius: 0.3rem; white-space: nowrap; }
 .hist__live.is-live { background: var(--diff-add-fg); color: #fff; }
 .hist__live.is-was { background: transparent; color: var(--ink-soft); border: 1px solid var(--paper-line); }
 .hist__live.is-never { background: transparent; color: var(--ink-faintest); border: 1px dashed var(--paper-line); }
 /* preview metadata strip: full draft + live detail for the selected version */
-.hist__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; font-size: 0.82rem; color: var(--ink-soft); padding-bottom: 0.4rem; border-bottom: 1px solid var(--paper-line); }
+.hist__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; font-family: var(--sans); font-size: 0.85rem; color: var(--ink-soft); padding-bottom: 0.4rem; border-bottom: 1px solid var(--paper-line); }
 .hist__metawhen { font-family: var(--mono); font-size: 0.78rem; color: var(--ink); }
 .hist__metalive { color: var(--ink-soft); }
 .hist__preview { padding: 1rem 1.3rem; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
