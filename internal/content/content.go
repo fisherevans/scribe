@@ -10,10 +10,12 @@
 package content
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"sort"
@@ -223,6 +225,16 @@ func (s *Store) Write(name string, r Resource) error {
 	c, err := s.collection(name)
 	if err != nil {
 		return err
+	}
+	// Entries of the primary collection get an immutable `id`, minted once on
+	// first save. Downstream systems (e.g. the blog's comment store) key on this
+	// id rather than the slug, so a thread survives a rename/URL change. Only the
+	// persisting Write path mints (not Serialize), so a preview never churns it.
+	if name == s.schema.Primary && !hasStableID(r.Fields) {
+		if r.Fields == nil {
+			r.Fields = map[string]any{}
+		}
+		r.Fields["id"] = mintID()
 	}
 	out, err := s.build(c, r)
 	if err != nil {
@@ -463,6 +475,48 @@ func renderUnknown(k string, v any) string {
 		return ""
 	}
 	return string(out)
+}
+
+// ---- stable id ----------------------------------------------------------
+
+// Stable-id alphabet: URL-safe and unambiguous. The first character is always a
+// letter so the value never parses as a YAML number and round-trips unquoted.
+const (
+	idFirst = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	idRest  = idFirst + "0123456789"
+	idLen   = 10
+)
+
+// hasStableID reports whether fields already carry a non-empty `id`.
+func hasStableID(fields map[string]any) bool {
+	v, ok := fields["id"]
+	if !ok {
+		return false
+	}
+	str, _ := v.(string)
+	return strings.TrimSpace(str) != ""
+}
+
+// mintID generates a fresh stable id. Matches tools/backfill-post-ids.mjs in the
+// blog repo (letter-led, 10 chars) so minted and backfilled ids are uniform.
+func mintID() string {
+	b := make([]byte, idLen)
+	b[0] = idFirst[randIndex(len(idFirst))]
+	for i := 1; i < idLen; i++ {
+		b[i] = idRest[randIndex(len(idRest))]
+	}
+	return string(b)
+}
+
+// randIndex returns a uniform random index in [0,n) from crypto/rand. A failure
+// of the system CSPRNG is unrecoverable, so it panics rather than return a
+// biased or zero value.
+func randIndex(n int) int {
+	v, err := rand.Int(rand.Reader, big.NewInt(int64(n)))
+	if err != nil {
+		panic(fmt.Sprintf("content: crypto/rand failed: %v", err))
+	}
+	return int(v.Int64())
 }
 
 // ---- helpers ------------------------------------------------------------
