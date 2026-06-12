@@ -244,6 +244,29 @@ func (s *Store) Write(name string, r Resource) error {
 	return nil
 }
 
+// ParseRaw parses raw file bytes (as stored on disk, e.g. pulled from git for a
+// historical version) into a Resource for collection name - the same split +
+// field parse that Read does, but against bytes instead of a working-tree file.
+// Slug is left empty for the caller to set.
+func (s *Store) ParseRaw(name string, raw []byte) (*Resource, error) {
+	c, err := s.collection(name)
+	if err != nil {
+		return nil, err
+	}
+	var frontBytes []byte
+	var body string
+	if c.Format == "yaml-frontmatter" {
+		frontBytes, body = splitFrontmatter(raw)
+	} else {
+		frontBytes = raw
+	}
+	fields, err := parseFields(c, frontBytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse raw %s: %w", name, err)
+	}
+	return &Resource{Fields: fields, Body: body, Version: version(raw)}, nil
+}
+
 // Serialize returns the bytes Write would produce, without touching disk.
 func (s *Store) Serialize(name string, r Resource) ([]byte, error) {
 	c, err := s.collection(name)

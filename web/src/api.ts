@@ -132,6 +132,23 @@ export const api = {
     media(slug?: string): Promise<{ items: MediaItem[] }> {
         return request('/api/media' + (slug ? `?slug=${encodeURIComponent(slug)}` : '')).then(json)
     },
+    // Version checkpoints that touched this resource, newest first.
+    history(c: string, slug: string): Promise<Checkpoint[]> {
+        return request(`${R(c, slug)}/history`).then(json)
+    },
+    // The resource as it was at a given checkpoint (for preview/diff). Read-only,
+    // never touches the working tree.
+    versionAt(c: string, slug: string, hash: string): Promise<Resource> {
+        return request(`${R(c, slug)}/at/${encodeURIComponent(hash)}`).then(json)
+    },
+    // Restore a past version as the current content, landed as a new checkpoint.
+    restore(c: string, slug: string, hash: string): Promise<Resource> {
+        return request(`${R(c, slug)}/restore`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ hash }),
+        }).then(json)
+    },
     syncStatus(): Promise<SyncStatus> {
         return request('/api/sync').then(json)
     },
@@ -142,6 +159,17 @@ export const api = {
 
 export interface Capabilities {
     upload: { external: boolean }
+}
+
+// One version checkpoint in a resource's history.
+export interface Checkpoint {
+    hash: string
+    time: string // RFC3339
+    added: number
+    removed: number
+    summary: string
+    published: boolean // on the main branch (pushed), vs a staging-only checkpoint
+    fields?: Record<string, unknown> // frontmatter as it was at this commit (for the draft pill, etc.)
 }
 
 export interface MediaItem {

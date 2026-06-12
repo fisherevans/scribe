@@ -16,6 +16,7 @@ interface Props {
     onToggleEdit: () => void
     onDetails: () => void
     onPublish: () => void
+    onHistory: () => void
 }
 
 const STATUS_LABEL: Record<SaveStatus, string> = {
@@ -29,10 +30,10 @@ const STATUS_LABEL: Record<SaveStatus, string> = {
 // Deliberately sparse: the page is the primary thing. The bar shows only the
 // save status (when not idle), the edit toggle, a publish CTA when there's
 // something staged, and an overflow for the occasional actions (details, live).
-export function TopBar({ resource, showDetails, showEdit, editMode, status, stagedCount, publishing, liveUrl, onMenu, onToggleEdit, onDetails, onPublish }: Props) {
+export function TopBar({ resource, showDetails, showEdit, editMode, status, stagedCount, publishing, liveUrl, onMenu, onToggleEdit, onDetails, onPublish, onHistory }: Props) {
     const [menuOpen, setMenuOpen] = useState(false)
     const close = (fn: () => void) => () => { setMenuOpen(false); fn() }
-    const hasOverflow = showDetails || !!liveUrl
+    const hasOverflow = showDetails || !!liveUrl || !!resource
 
     return (
         <header className="topbar">
@@ -70,6 +71,7 @@ export function TopBar({ resource, showDetails, showEdit, editMode, status, stag
                         >⋯</button>
                         {menuOpen && <div className="topbar__scrim" onClick={() => setMenuOpen(false)} />}
                         <div className={'topbar__secondary' + (menuOpen ? ' is-open' : '')}>
+                            <button className="btn btn--ghost" onClick={close(onHistory)} type="button" disabled={!resource} title="version history">history</button>
                             {showDetails && (
                                 <button className="btn btn--ghost" onClick={close(onDetails)} type="button" disabled={!resource}>details</button>
                             )}

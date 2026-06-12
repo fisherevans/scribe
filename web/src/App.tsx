@@ -17,6 +17,7 @@ import { SetupWizard } from './components/SetupWizard'
 import { CascadeDialog, type Cascade } from './components/CascadeDialog'
 import { OrphanDialog, type Orphan } from './components/OrphanDialog'
 import { PublishReview, type PublishPhase } from './components/PublishReview'
+import { HistoryDrawer } from './components/HistoryDrawer'
 import { SyncBanner } from './components/SyncBanner'
 import { ConflictBanner } from './components/ConflictBanner'
 import { ConflictResolveModal } from './components/ConflictResolveModal'
@@ -75,6 +76,7 @@ export default function App() {
     const [syncRetrying, setSyncRetrying] = useState(false)
     const [drawer, setDrawer] = useState(false)
     const [details, setDetails] = useState(false)
+    const [historyOpen, setHistoryOpen] = useState(false)
     const [settingsOpen, setSettingsOpen] = useState(false)
     const [setupOpen, setSetupOpen] = useState(false)
     const [editMode, setEditMode] = useState(false)
@@ -707,6 +709,7 @@ export default function App() {
                     onToggleEdit={toggleEdit}
                     onDetails={() => setDetails(true)}
                     onPublish={openPublish}
+                    onHistory={() => setHistoryOpen(true)}
                 />
                 <div className={'app__canvas' + (collection === 'posts' ? '' : ' app__canvas--form')}>
                     {active && view && Experience ? (
@@ -733,6 +736,19 @@ export default function App() {
                     error={publishError}
                     onConfirm={confirmPublish}
                     onClose={() => setPublishOpen(false)}
+                />
+            )}
+            {historyOpen && active && (
+                <HistoryDrawer
+                    collection={collection}
+                    slug={active.slug}
+                    current={active}
+                    draftField={view?.map.draft}
+                    onClose={() => setHistoryOpen(false)}
+                    onRestored={(saved) => {
+                        setLists((cur) => ({ ...cur, [collection]: (cur[collection] ?? []).map((r) => (r.slug === saved.slug ? saved : r)) }))
+                        setReloadNonce((n) => n + 1)
+                    }}
                 />
             )}
             <TitleSlugModal

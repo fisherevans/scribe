@@ -1465,20 +1465,118 @@ button.chip__label:hover { text-decoration: underline; }
 .recover__actions { flex: none; display: flex; gap: 0.4rem; }
 
 /* Line diff (recovery + conflict). */
-.diff { margin-top: 0.6rem; border: 1px solid var(--desk-line); border-radius: 0.45rem; overflow: hidden; }
-.diff--empty { padding: 0.6rem 0.75rem; font-size: 0.8rem; color: var(--ink-faint); }
-.diff__stat { display: flex; gap: 0.8rem; padding: 0.35rem 0.6rem; font-family: var(--mono); font-size: 0.7rem; background: rgba(0, 0, 0, 0.12); }
-.diff__stat-add { color: var(--sage); }
-.diff__stat-del { color: var(--rose); }
-.diff__body { margin: 0; max-height: 18rem; overflow: auto; font-family: var(--mono); font-size: 0.72rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
-.diff__line { display: flex; gap: 0.4rem; padding: 0 0.6rem; }
-.diff__line--add { background: rgba(141, 156, 107, 0.18); }
-.diff__line--del { background: rgba(192, 125, 84, 0.18); }
-.diff__sign { flex: none; width: 0.8rem; text-align: center; color: var(--ink-faint); user-select: none; }
-.diff__line--add .diff__sign { color: var(--sage); }
-.diff__line--del .diff__sign { color: var(--rose); }
+/* Dedicated diff colors: a clearly distinct green/red (the old sage/rose were
+   too close in hue and value to tell apart). Tuned for the light paper bg. */
+:root {
+    --diff-add-fg: #15803d;
+    --diff-del-fg: #c0271c;
+    --diff-add-bg: rgba(34, 160, 70, 0.13);
+    --diff-del-bg: rgba(200, 45, 32, 0.10);
+    --diff-add-hl: rgba(34, 160, 70, 0.42);
+    --diff-del-hl: rgba(200, 45, 32, 0.34);
+    /* A clean sans for tiny UI labels (pills): the serif body font is hard to
+       read at pill sizes. */
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+.diff { margin-top: 0.6rem; border: 1px solid var(--paper-line); border-radius: 0.45rem; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+.diff--empty { padding: 0.7rem 0.85rem; font-size: 0.85rem; color: var(--ink-faint); }
+.diff__stat { display: flex; gap: 1rem; padding: 0.4rem 0.75rem; font-family: var(--mono); font-size: 0.78rem; font-weight: 600; background: var(--paper-2); border-bottom: 1px solid var(--paper-line); }
+.diff__stat-add { color: var(--diff-add-fg); }
+.diff__stat-del { color: var(--diff-del-fg); }
+.diff__body { margin: 0; max-height: 18rem; overflow: auto; font-family: var(--mono); font-size: 0.8rem; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+.diff__line { display: flex; gap: 0.5rem; padding: 0.04rem 0.7rem; }
+.diff__line--add { background: var(--diff-add-bg); }
+.diff__line--del { background: var(--diff-del-bg); }
+.diff__sign { flex: none; width: 0.9rem; text-align: center; color: var(--ink-faintest); user-select: none; font-weight: 700; }
+.diff__line--add .diff__sign { color: var(--diff-add-fg); }
+.diff__line--del .diff__sign { color: var(--diff-del-fg); }
 .diff__text { flex: 1; min-width: 0; }
+/* word-level highlight: only the changed run inside a line is emphasized */
+.diff__hl { border-radius: 2px; padding: 0.02em 0.08em; font-weight: 600; }
+.diff__hl--add { background: var(--diff-add-hl); color: var(--diff-add-fg); }
+.diff__hl--del { background: var(--diff-del-hl); color: var(--diff-del-fg); text-decoration: line-through; text-decoration-color: rgba(192, 39, 28, 0.55); }
 
 @media (prefers-reduced-motion: reduce) {
     * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* ---- version history: a large, centered review surface ---------------- */
+.hist { position: fixed; inset: 0; z-index: 115; display: grid; place-items: center; padding: 3vh 2vw; }
+.hist__scrim { position: absolute; inset: 0; background: rgba(10, 8, 6, 0.55); }
+.hist__panel {
+    position: relative; z-index: 1;
+    width: min(100rem, 96vw); height: min(92vh, 60rem);
+    display: flex; flex-direction: column;
+    background: var(--paper); color: var(--ink);
+    border: 1px solid var(--paper-line); border-radius: 0.6rem;
+    box-shadow: 0 24px 64px rgba(10, 8, 6, 0.42); overflow: hidden;
+}
+.hist__head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.9rem 1.3rem; border-bottom: 1px solid var(--paper-line);
+}
+.hist__title { margin: 0; font-family: var(--serif-display); font-size: 1.25rem; font-weight: 500; }
+.hist__x { background: none; border: none; font-size: 1.7rem; line-height: 1; color: var(--ink-soft); cursor: pointer; padding: 0 0.25rem; }
+.hist__x:hover { color: var(--ink); }
+.hist__error { padding: 0.6rem 1.3rem; font-size: 0.85rem; color: var(--diff-del-fg); background: var(--diff-del-bg); }
+.hist__body { flex: 1; min-height: 0; display: grid; grid-template-columns: 18rem 1fr; }
+.hist__list {
+    list-style: none; margin: 0; padding: 0.5rem; overflow: auto;
+    border-right: 1px solid var(--paper-line); background: var(--paper-2);
+}
+.hist__empty { padding: 0.9rem; font-size: 0.85rem; color: var(--ink-faintest); }
+.hist__item {
+    width: 100%; display: flex; flex-direction: column; align-items: stretch; gap: 0.35rem;
+    padding: 0.55rem 0.7rem; border: none; border-radius: 0.4rem; cursor: pointer;
+    background: none; color: var(--ink); text-align: left; font-family: var(--sans); font-size: 0.86rem;
+}
+.hist__item:hover { background: var(--brass-soft); }
+.hist__item.is-sel { background: var(--brass-soft); box-shadow: inset 3px 0 0 var(--brass); }
+.hist__row1 { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.hist__row2 { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.hist__when { min-width: 0; }
+.hist__size { font-family: var(--mono); font-size: 0.78rem; display: flex; gap: 0.4rem; font-weight: 600; }
+.hist__add { color: var(--diff-add-fg); }
+.hist__del { color: var(--diff-del-fg); }
+.hist__nochg { color: var(--ink-faintest); }
+/* axis 1: the literal draft frontmatter field at this version (draft=true/false) */
+.hist__pill { flex: none; font-family: var(--sans); font-size: 0.7rem; font-weight: 600; letter-spacing: 0; padding: 0.12rem 0.45rem; border-radius: 0.7rem; white-space: nowrap; }
+.hist__pill.is-draft { background: var(--brass-soft); color: var(--brass-deep); border: 1px solid rgba(192, 136, 59, 0.45); }
+.hist__pill.is-pub { background: var(--diff-add-bg); color: var(--diff-add-fg); border: 1px solid rgba(34, 160, 70, 0.4); }
+/* axis 2: was this version live online (the head of main) - now, for a past
+   window (duration), or never. Distinct shape (square-ish) from the draft pill. */
+.hist__live { flex: none; font-family: var(--sans); font-size: 0.7rem; font-weight: 600; padding: 0.12rem 0.45rem; border-radius: 0.3rem; white-space: nowrap; }
+.hist__live.is-live { background: var(--diff-add-fg); color: #fff; }
+.hist__live.is-was { background: transparent; color: var(--ink-soft); border: 1px solid var(--paper-line); }
+.hist__live.is-never { background: transparent; color: var(--ink-faintest); border: 1px dashed var(--paper-line); }
+/* preview metadata strip: full draft + live detail for the selected version */
+.hist__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; font-family: var(--sans); font-size: 0.85rem; color: var(--ink-soft); padding-bottom: 0.4rem; border-bottom: 1px solid var(--paper-line); }
+.hist__metawhen { font-family: var(--mono); font-size: 0.78rem; color: var(--ink); }
+.hist__metalive { color: var(--ink-soft); }
+.hist__preview { padding: 1rem 1.3rem; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+/* the diff/full-version view grows to fill the tall panel */
+.hist__preview .diff { flex: 1; margin-top: 0.5rem; }
+.hist__preview .diff__body { max-height: none; flex: 1; font-size: 0.95rem; line-height: 1.7; padding: 0.3rem 0; }
+.hist__hint { color: var(--ink-faintest); font-size: 0.9rem; padding: 1rem 0; }
+.hist__note { margin: 0.5rem 0; color: var(--ink-soft); font-size: 0.85rem; }
+.hist__bar { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; flex-wrap: wrap; }
+.hist__toggle { display: inline-flex; border: 1px solid var(--paper-line); border-radius: 0.4rem; overflow: hidden; }
+.hist__toggle button { background: none; border: none; padding: 0.35rem 0.7rem; font-size: 0.82rem; color: var(--ink-soft); cursor: pointer; }
+.hist__toggle button.is-on { background: var(--brass-soft); color: var(--ink); }
+.hist__acts { display: flex; gap: 0.5rem; }
+.hist__full {
+    margin: 0.6rem 0 0; padding: 0.7rem 0.85rem; flex: 1; overflow: auto;
+    border: 1px solid var(--paper-line); border-radius: 0.45rem; background: var(--paper-2);
+    font-family: var(--mono); font-size: 0.92rem; line-height: 1.65; white-space: pre-wrap; word-break: break-word;
+}
+@media (max-width: 720px) {
+    .hist__panel { width: 96vw; height: 94vh; }
+    .hist__body { grid-template-columns: 1fr; grid-template-rows: 11rem 1fr; }
+    .hist__list { border-right: none; border-bottom: 1px solid var(--paper-line); }
+}
+
+/* version-history: two-version compare selector */
+.hist__cmp { display: flex; align-items: center; flex-wrap: wrap; gap: 0.45rem; margin: 0.7rem 0 0.2rem; font-size: 0.85rem; color: var(--ink-soft); }
+.hist__base { font-family: var(--mono); font-size: 0.8rem; padding: 0.25rem 0.45rem; border: 1px solid var(--paper-line); border-radius: 0.35rem; background: var(--paper-2); color: var(--ink); }
+.hist__arrow { color: var(--ink-soft); }
+.hist__cmpnote { color: var(--ink-faintest); font-family: var(--mono); font-size: 0.7rem; }
