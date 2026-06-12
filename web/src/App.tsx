@@ -743,6 +743,7 @@ export default function App() {
                     collection={collection}
                     slug={active.slug}
                     current={active}
+                    draftField={view?.map.draft}
                     onClose={() => setHistoryOpen(false)}
                     onRestored={(saved) => {
                         setLists((cur) => ({ ...cur, [collection]: (cur[collection] ?? []).map((r) => (r.slug === saved.slug ? saved : r)) }))

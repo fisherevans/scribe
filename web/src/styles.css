@@ -1534,9 +1534,15 @@ button.chip__label:hover { text-decoration: underline; }
 .hist__add { color: var(--diff-add-fg); }
 .hist__del { color: var(--diff-del-fg); }
 .hist__nochg { color: var(--ink-faintest); }
-.hist__dot { flex: none; width: 0.55rem; height: 0.55rem; border-radius: 50%; }
-.hist__dot.is-pub { background: var(--diff-add-fg); }
-.hist__dot.is-draft { background: var(--brass); }
+/* the draft/published pill = the frontmatter `draft` field at this version */
+.hist__pill { flex: none; font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 0.1rem 0.4rem; border-radius: 0.7rem; }
+.hist__pill.is-draft { background: var(--brass-soft); color: var(--brass-deep); border: 1px solid rgba(192, 136, 59, 0.45); }
+.hist__pill.is-pub { background: var(--diff-add-bg); color: var(--diff-add-fg); border: 1px solid rgba(34, 160, 70, 0.4); }
+/* the git dot = on main (filled) vs staging-only (hollow); neutral, so it reads
+   as a different axis than the colored draft pill */
+.hist__dot { flex: none; width: 0.55rem; height: 0.55rem; border-radius: 50%; border: 1px solid var(--ink-faintest); }
+.hist__dot.is-pub { background: var(--ink-soft); border-color: var(--ink-soft); }
+.hist__dot.is-staging { background: transparent; }
 .hist__preview { padding: 1rem 1.3rem; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 /* the diff/full-version view grows to fill the tall panel */
 .hist__preview .diff { flex: 1; margin-top: 0.5rem; }

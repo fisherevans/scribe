@@ -168,7 +168,8 @@ export interface Checkpoint {
     added: number
     removed: number
     summary: string
-    published: boolean // already live on the publish branch, vs a draft checkpoint
+    published: boolean // on the main branch (pushed), vs a staging-only checkpoint
+    fields?: Record<string, unknown> // frontmatter as it was at this commit (for the draft pill, etc.)
 }
 
 export interface MediaItem {

@@ -7,6 +7,7 @@ interface Props {
     collection: string
     slug: string
     current: Resource // the live (last-saved) resource
+    draftField?: string // schema field name of the `draft` role, for the per-version pill
     onClose: () => void
     onRestored: (saved: Resource) => void
 }
@@ -21,7 +22,7 @@ type Ref = 'current' | string
 // fully decoupled from the editor (no autosave is touched); the editor only
 // changes on an explicit Restore (which lands a new checkpoint) or when the user
 // copies a passage and pastes it themselves.
-export function HistoryDrawer({ collection, slug, current, onClose, onRestored }: Props) {
+export function HistoryDrawer({ collection, slug, current, draftField, onClose, onRestored }: Props) {
     const [list, setList] = useState<Checkpoint[] | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [sel, setSel] = useState<string | null>(null) // selected checkpoint (the "target")
@@ -134,12 +135,13 @@ export function HistoryDrawer({ collection, slug, current, onClose, onRestored }
                                     onClick={() => setSel(c.hash)}
                                 >
                                     <span className="hist__when" title={new Date(c.time).toLocaleString()}>{ago(c.time)}</span>
+                                    {draftStateOf(c, draftField)}
                                     <span className="hist__size">
                                         {c.added > 0 && <span className="hist__add">+{c.added}</span>}
                                         {c.removed > 0 && <span className="hist__del">-{c.removed}</span>}
                                         {c.added === 0 && c.removed === 0 && <span className="hist__nochg">·</span>}
                                     </span>
-                                    <span className={'hist__dot ' + (c.published ? 'is-pub' : 'is-draft')} title={c.published ? 'published' : 'draft checkpoint'} />
+                                    <span className={'hist__dot ' + (c.published ? 'is-pub' : 'is-staging')} title={c.published ? 'on main (pushed)' : 'staging only (not yet pushed)'} />
                                 </button>
                             </li>
                         ))}
@@ -190,6 +192,20 @@ export function HistoryDrawer({ collection, slug, current, onClose, onRestored }
                 </div>
             </aside>
         </div>
+    )
+}
+
+// draftStateOf renders the draft/published pill from the `draft` frontmatter
+// field as it was at this checkpoint (distinct from the git on-main dot). Absent
+// field = the schema default (not a draft = published). No pill when the draft
+// field isn't mapped or the version's frontmatter couldn't be read.
+function draftStateOf(c: Checkpoint, draftField?: string) {
+    if (!draftField || !c.fields) return null
+    const isDraft = c.fields[draftField] === true
+    return (
+        <span className={'hist__pill ' + (isDraft ? 'is-draft' : 'is-pub')} title={isDraft ? 'marked draft at this version' : 'not a draft (published) at this version'}>
+            {isDraft ? 'draft' : 'published'}
+        </span>
     )
 }
 

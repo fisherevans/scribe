@@ -8,13 +8,21 @@ import (
 	"net/http"
 )
 
+// checkpoint is a git checkpoint enriched with the resource's frontmatter fields
+// as they were at that commit, so the UI can show per-version state (e.g. whether
+// the `draft` field was set then) without a round-trip per row.
+type checkpoint struct {
+	git.Checkpoint
+	Fields map[string]any `json:"fields,omitempty"`
+}
+
 // history lists the version checkpoints that touched a resource: when each
-// landed, how big the change was, and whether it's published or a draft. Empty
-// (not an error) when the git layer is disabled - the UI just shows no history.
+// landed, how big the change was, whether it's on main, and its frontmatter at
+// that point. Empty (not an error) when the git layer is disabled.
 func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 	c, slug := r.PathValue("collection"), r.PathValue("slug")
 	if s.git == nil {
-		writeJSON(w, []git.Checkpoint{})
+		writeJSON(w, []checkpoint{})
 		return
 	}
 	rel, err := s.store.RelPath(c, slug)
@@ -27,10 +35,20 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if cps == nil {
-		cps = []git.Checkpoint{}
+	// Enrich each checkpoint with its frontmatter at that commit. Best-effort:
+	// a commit that deleted the file (or any parse hiccup) just yields no fields
+	// for that row rather than failing the whole list.
+	out := make([]checkpoint, 0, len(cps))
+	for _, cp := range cps {
+		v := checkpoint{Checkpoint: cp}
+		if raw, e := s.git.FileAt(r.Context(), cp.Hash, rel); e == nil {
+			if res, e := s.store.ParseRaw(c, raw); e == nil {
+				v.Fields = res.Fields
+			}
+		}
+		out = append(out, v)
 	}
-	writeJSON(w, cps)
+	writeJSON(w, out)
 }
 
 // versionAt returns a resource as it was at a given checkpoint, for previewing
