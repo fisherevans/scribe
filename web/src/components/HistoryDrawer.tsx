@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, type Checkpoint } from '../api'
 import type { Resource } from '../types'
 import { DiffView } from './DiffView'
@@ -6,44 +6,82 @@ import { DiffView } from './DiffView'
 interface Props {
     collection: string
     slug: string
-    current: Resource // the live (last-saved) resource, the diff baseline
+    current: Resource // the live (last-saved) resource
     onClose: () => void
     onRestored: (saved: Resource) => void
 }
 
+// 'current' is the live draft; otherwise a checkpoint hash.
+type Ref = 'current' | string
+
 // Version history for one resource: a timeline of checkpoints on the left, a
-// read-only preview/diff of the selected one on the right. Viewing is fully
-// decoupled from the editor (no autosave is touched); the editor only changes on
-// an explicit Restore (which lands a new checkpoint) or when the user copies a
-// passage and pastes it themselves.
+// read-only preview/diff of the selected one on the right. The diff can compare
+// the selected version against the current draft (default) or against any other
+// checkpoint, so you can see what changed between any two points. Viewing is
+// fully decoupled from the editor (no autosave is touched); the editor only
+// changes on an explicit Restore (which lands a new checkpoint) or when the user
+// copies a passage and pastes it themselves.
 export function HistoryDrawer({ collection, slug, current, onClose, onRestored }: Props) {
     const [list, setList] = useState<Checkpoint[] | null>(null)
     const [error, setError] = useState<string | null>(null)
-    const [sel, setSel] = useState<string | null>(null)
+    const [sel, setSel] = useState<string | null>(null) // selected checkpoint (the "target")
+    const [base, setBase] = useState<Ref>('current') // what to diff the target against
     const [version, setVersion] = useState<Resource | null>(null)
+    const [baseBody, setBaseBody] = useState<string>(current.body)
     const [mode, setMode] = useState<'diff' | 'full'>('diff')
     const [confirm, setConfirm] = useState(false)
     const [busy, setBusy] = useState(false)
     const [copied, setCopied] = useState(false)
 
+    // Cache fetched version bodies so flipping the compare base doesn't refetch.
+    const bodies = useRef(new Map<string, string>())
+
     useEffect(() => {
         api.history(collection, slug).then(setList).catch((e) => setError(String(e)))
     }, [collection, slug])
 
+    // Load the selected (target) version. Reset the compare base to "current"
+    // each time a different version is picked.
     useEffect(() => {
         setConfirm(false)
+        setBase('current')
         if (!sel) {
             setVersion(null)
             return
         }
         let live = true
-        api.versionAt(collection, slug, sel)
-            .then((v) => live && setVersion(v))
+        fetchBody(sel)
+            .then((body) => live && setVersion({ ...current, body }))
             .catch((e) => live && setError(String(e)))
         return () => {
             live = false
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sel, collection, slug])
+
+    // Load the compare base's body (current draft, or another checkpoint).
+    useEffect(() => {
+        let live = true
+        if (base === 'current') {
+            setBaseBody(current.body)
+            return
+        }
+        fetchBody(base)
+            .then((body) => live && setBaseBody(body))
+            .catch((e) => live && setError(String(e)))
+        return () => {
+            live = false
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [base, current.body])
+
+    const fetchBody = async (hash: string): Promise<string> => {
+        const hit = bodies.current.get(hash)
+        if (hit !== undefined) return hit
+        const v = await api.versionAt(collection, slug, hash)
+        bodies.current.set(hash, v.body)
+        return v.body
+    }
 
     const restore = async (hash: string) => {
         setBusy(true)
@@ -66,6 +104,14 @@ export function HistoryDrawer({ collection, slug, current, onClose, onRestored }
             setError('clipboard unavailable')
         }
     }
+
+    // Order the two sides chronologically so the diff reads oldest -> newest
+    // regardless of which the user picked as target vs base.
+    const timeOf = (ref: Ref): number => (ref === 'current' ? Date.now() : msOf(list, ref))
+    const labelOf = (ref: Ref): string => (ref === 'current' ? 'current' : agoFor(list, ref))
+    const older: Ref = sel && timeOf(base) < timeOf(sel) ? base : sel ?? 'current'
+    const newer: Ref = older === base ? (sel ?? 'current') : base
+    const bodyOf = (ref: Ref): string => (ref === 'current' ? current.body : ref === sel ? (version?.body ?? '') : baseBody)
 
     return (
         <div className="hist">
@@ -100,12 +146,12 @@ export function HistoryDrawer({ collection, slug, current, onClose, onRestored }
                     </ol>
 
                     <div className="hist__preview">
-                        {!version && <div className="hist__hint">Pick a version to preview it.</div>}
+                        {!version && <div className="hist__hint">Pick a version to preview it, or compare any two.</div>}
                         {version && (
                             <>
                                 <div className="hist__bar">
                                     <div className="hist__toggle">
-                                        <button type="button" className={mode === 'diff' ? 'is-on' : ''} onClick={() => setMode('diff')}>changes since</button>
+                                        <button type="button" className={mode === 'diff' ? 'is-on' : ''} onClick={() => setMode('diff')}>diff</button>
                                         <button type="button" className={mode === 'full' ? 'is-on' : ''} onClick={() => setMode('full')}>full version</button>
                                     </div>
                                     <div className="hist__acts">
@@ -121,7 +167,20 @@ export function HistoryDrawer({ collection, slug, current, onClose, onRestored }
                                     <div className="hist__note">Restores this version as a new checkpoint on top - your current text stays in history and can be restored back.</div>
                                 )}
                                 {mode === 'diff' ? (
-                                    <DiffView before={version.body} after={current.body} />
+                                    <>
+                                        <div className="hist__cmp">
+                                            <span>comparing</span>
+                                            <select className="hist__base" value={base} onChange={(e) => setBase(e.target.value)}>
+                                                <option value="current">current draft</option>
+                                                {list?.map((c) => (
+                                                    <option key={c.hash} value={c.hash} disabled={c.hash === sel}>{ago(c.time)} ({c.hash.slice(0, 7)})</option>
+                                                ))}
+                                            </select>
+                                            <span className="hist__arrow">→ this version</span>
+                                            <span className="hist__cmpnote">({labelOf(older)} → {labelOf(newer)})</span>
+                                        </div>
+                                        <DiffView before={bodyOf(older)} after={bodyOf(newer)} />
+                                    </>
                                 ) : (
                                     <pre className="hist__full">{version.body || '(empty body)'}</pre>
                                 )}
@@ -132,6 +191,16 @@ export function HistoryDrawer({ collection, slug, current, onClose, onRestored }
             </aside>
         </div>
     )
+}
+
+function msOf(list: Checkpoint[] | null, hash: string): number {
+    const c = list?.find((x) => x.hash === hash)
+    return c ? new Date(c.time).getTime() : 0
+}
+
+function agoFor(list: Checkpoint[] | null, hash: string): string {
+    const c = list?.find((x) => x.hash === hash)
+    return c ? ago(c.time) : hash.slice(0, 7)
 }
 
 // ago renders a compact relative time ("just now", "12m ago", "3h ago", "2d ago"),

@@ -1537,3 +1537,9 @@ button.chip__label:hover { text-decoration: underline; }
     .hist__body { grid-template-columns: 1fr; grid-template-rows: 12rem 1fr; }
     .hist__list { border-right: none; border-bottom: 1px solid var(--paper-line); }
 }
+
+/* version-history: two-version compare selector */
+.hist__cmp { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; margin: 0.6rem 0 0.2rem; font-size: 0.78rem; color: var(--ink-soft); }
+.hist__base { font-family: var(--mono); font-size: 0.74rem; padding: 0.2rem 0.35rem; border: 1px solid var(--paper-line); border-radius: 0.35rem; background: var(--paper-2); color: var(--ink); }
+.hist__arrow { color: var(--ink-soft); }
+.hist__cmpnote { color: var(--ink-faintest); font-family: var(--mono); font-size: 0.7rem; }
