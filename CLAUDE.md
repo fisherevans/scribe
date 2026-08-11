@@ -87,3 +87,12 @@ cd web && npm test           # markdown round-trip + idempotency
   git-branch layer (design.md "Staging vs production") is unbuilt.
 - Renaming/deleting a tag doesn't update posts that reference it.
 - A benign `flushSync` console warning from TipTap's React node views (upstream).
+
+## Changelog
+
+This repo keeps a `changelog/` - a per-entry record of **deliberate changes and the
+why behind them** (features, structural/deploy changes, removals). When you make a
+meaningful change, add an entry in the **same PR as the work**; the why is the point,
+so a future agent doesn't have to reverse-engineer it from a diff. Format and
+when-to-write rules are in [changelog/README.md](changelog/README.md). This mirrors
+the homelab-wide practice defined in nottingham-cloud's `agent/changelog.md`.
