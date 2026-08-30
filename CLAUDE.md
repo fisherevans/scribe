@@ -88,6 +88,12 @@ cd web && npm test           # markdown round-trip + idempotency
 - Renaming/deleting a tag doesn't update posts that reference it.
 - A benign `flushSync` console warning from TipTap's React node views (upstream).
 
+## Issues
+
+This repo follows the homelab issue lifecycle: an issue per ask, `status:in-progress` while
+working, `status:review` with a structured handover comment when delivered, and **only Fisher
+closes an issue**. Full contract: `nottingham-cloud/agent/issue-lifecycle.md`.
+
 ## Changelog
 
 This repo keeps a `changelog/` - a per-entry record of **deliberate changes and the
