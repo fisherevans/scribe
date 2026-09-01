@@ -92,7 +92,8 @@ cd web && npm test           # markdown round-trip + idempotency
 
 This repo follows the homelab issue lifecycle: an issue per ask, `status:in-progress` while
 working, `status:review` with a structured handover comment when delivered, and **only Fisher
-closes an issue**. Full contract: `nottingham-cloud/agent/issue-lifecycle.md`.
+closes a `review:fisher` issue**. Agent-originated tracking (`review:agent`) is yours to close
+when the work is done. Full contract: `nottingham-cloud/agent/issue-lifecycle.md`.
 
 ## Changelog
 
