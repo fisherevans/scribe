@@ -4,7 +4,7 @@ import { Saver } from './lib/saver'
 import { clearDraft, listDrafts, recoverableDraft, writeDraft, type Draft } from './lib/drafts'
 import type { Resource, Schema } from './types'
 import { fstr, flist } from './types'
-import { viewFor, type CollectionView, type ResourcePatch, type Referencer } from './collections'
+import { viewFor, type CollectionView, type ResourcePatch, type Referencer, isDocExperience } from './collections'
 import { resolve, isConfigured, type Mapping } from './mapping'
 import { DataContext, type DataApi } from './data'
 import { UploadContext } from './editor/uploadContext'
@@ -202,9 +202,9 @@ export default function App() {
         localStorage.setItem('scribe-setup-seen', '1')
         setSetupOpen(false)
     }, [])
-    // Read-only (hides block drag handles etc.) applies to the post writing
+    // Read-only (hides block drag handles etc.) applies to a document writing
     // surface in view mode. Form experiences (tag, generic) are always editable.
-    const formExp = view ? view.experience !== 'blog-post' : false
+    const formExp = view ? !isDocExperience(view.experience) : false
     useEffect(() => { document.body.classList.toggle('is-readonly', !editMode && !formExp) }, [editMode, formExp])
     useEffect(() => { if (railW.current != null) document.documentElement.style.setProperty('--rail-w', railW.current + 'rem') }, [])
 
@@ -699,7 +699,7 @@ export default function App() {
                 <TopBar
                     resource={active}
                     showDetails={view?.hasDetails ?? false}
-                    showEdit={collection === 'posts'}
+                    showEdit={isDocExperience(view?.experience)}
                     editMode={editMode}
                     status={status}
                     stagedCount={stagedCount}

@@ -42,6 +42,15 @@ const COMPONENTS: Record<string, ComponentType<ExperienceProps>> = {
     generic: GenericExperience as ComponentType<ExperienceProps>,
 }
 
+// Experiences whose surface is a document you write, rather than a form you
+// fill in. They get an explicit edit mode (and a read-only view mode); form
+// experiences are always editable. Keyed on the experience, not the collection
+// name - the edit button used to be gated on `collection === 'posts'`, which
+// meant notes never got one and any site whose primary collection is named
+// something else got none either.
+export const DOC_EXPERIENCES = ['blog-post', 'note']
+export const isDocExperience = (exp?: string) => !!exp && DOC_EXPERIENCES.includes(exp)
+
 // A collection view = an experience + its resolved mapping for one collection,
 // plus how to render it in the feed / link to the live site.
 export interface CollectionView {
