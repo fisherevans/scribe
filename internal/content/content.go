@@ -226,11 +226,11 @@ func (s *Store) Write(name string, r Resource) error {
 	if err != nil {
 		return err
 	}
-	// Entries of the primary collection get an immutable `id`, minted once on
+	// Entries of an id-bearing collection get an immutable `id`, minted once on
 	// first save. Downstream systems (e.g. the blog's comment store) key on this
 	// id rather than the slug, so a thread survives a rename/URL change. Only the
 	// persisting Write path mints (not Serialize), so a preview never churns it.
-	if name == s.schema.Primary && !hasStableID(r.Fields) {
+	if s.mintsID(name) && !hasStableID(r.Fields) {
 		if r.Fields == nil {
 			r.Fields = map[string]any{}
 		}
@@ -451,6 +451,15 @@ func emit(f schema.Field, v any, present bool) bool {
 func renderField(f schema.Field, v any) string {
 	if f.List {
 		items := toSlice(v)
+		// A list of objects - a note's `images: [{src, alt}]`, say - cannot be
+		// rendered item by item: fmt.Sprint on a map yields `map[alt:x src:y]`,
+		// which is not YAML and silently destroys the value on first save. Hand
+		// the whole field to the marshaller instead.
+		for _, it := range items {
+			if !isScalarValue(it) {
+				return renderUnknown(f.Name, items)
+			}
+		}
 		var b strings.Builder
 		b.WriteString(f.Name + ":\n")
 		for _, it := range items {
@@ -468,16 +477,50 @@ func renderField(f schema.Field, v any) string {
 	}
 }
 
-// renderUnknown preserves a field the schema doesn't describe via yaml.Marshal.
+// renderUnknown emits a field via the YAML marshaller - used both for fields the
+// schema doesn't describe and for declared fields too structured to render by
+// hand (see renderField). Indented to 2 so it matches the lists renderField
+// writes, rather than yaml.v3's default of 4 in the same frontmatter block.
 func renderUnknown(k string, v any) string {
-	out, err := yaml.Marshal(map[string]any{k: v})
-	if err != nil {
+	var b strings.Builder
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(2)
+	if err := enc.Encode(map[string]any{k: v}); err != nil {
 		return ""
 	}
-	return string(out)
+	_ = enc.Close()
+	return b.String()
+}
+
+// isScalarValue reports whether a value renders as a single YAML scalar.
+func isScalarValue(v any) bool {
+	switch v.(type) {
+	case map[string]any, map[any]any, []any:
+		return false
+	}
+	return true
 }
 
 // ---- stable id ----------------------------------------------------------
+
+// mintsID reports whether a collection's entries get a minted stable id. Two
+// ways in: the collection is settings.primary, or it declares an `id` field.
+//
+// The second is how a site opts a SECOND collection in without a new config
+// concept - a blog whose notes also carry comments declares `id` on notes, and
+// says nothing else. Before this, only the primary collection minted, so every
+// note saved from scribe arrived without one and the site's build refused it.
+func (s *Store) mintsID(name string) bool {
+	if name == s.schema.Primary {
+		return true
+	}
+	c, ok := s.schema.Collection(name)
+	if !ok {
+		return false
+	}
+	_, declared := c.Field("id")
+	return declared
+}
 
 // Stable-id alphabet: URL-safe and unambiguous. The first character is always a
 // letter so the value never parses as a YAML number and round-trips unquoted.
