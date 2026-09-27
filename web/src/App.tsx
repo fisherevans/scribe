@@ -117,7 +117,7 @@ export default function App() {
     const allTags = tagItems.map((t) => t.slug)
 
     // Browser tab title reflects what you're editing, so history/back is legible.
-    const kindOf = (v: CollectionView) => (v.experience === 'blog-post' ? 'post' : v.experience === 'tag' ? 'tag' : v.label)
+    const kindOf = (v: CollectionView) => (v.experience === 'blog-post' ? 'post' : v.experience === 'note' ? 'note' : v.experience === 'tag' ? 'tag' : v.label)
     const docTitle = view && active ? `${view.feedTitle(active)} · ${kindOf(view)} · scribe` : view ? `${view.label} · scribe` : 'scribe'
     useEffect(() => { document.title = docTitle }, [docTitle])
 

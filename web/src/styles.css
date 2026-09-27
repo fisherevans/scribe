@@ -1580,3 +1580,29 @@ button.chip__label:hover { text-decoration: underline; }
 .hist__base { font-family: var(--mono); font-size: 0.8rem; padding: 0.25rem 0.45rem; border: 1px solid var(--paper-line); border-radius: 0.35rem; background: var(--paper-2); color: var(--ink); }
 .hist__arrow { color: var(--ink-soft); }
 .hist__cmpnote { color: var(--ink-faintest); font-family: var(--mono); font-size: 0.7rem; }
+
+/* ---- notes -------------------------------------------------------------
+   A note has no title, so its page has no title slot: the date row is the
+   header. Everything here is deliberately lighter than .page__head. */
+.page--note .notehead { margin-bottom: 1.1rem; }
+.page--note .notehead__row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem 1.4rem; }
+.page--note .notehead__row--view { gap: 0.5rem 0.8rem; }
+.page--note .notehead__row--view .docmeta__byline { margin-bottom: 0; }
+
+/* A note's photos live in frontmatter, not in the prose, so they get their own
+   surface above the body rather than being inline images. */
+.gallery { margin: 0 0 1.2rem; }
+.gallery__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.6rem; }
+.gallery__item { margin: 0; position: relative; display: flex; flex-direction: column; gap: 0.35rem; }
+.gallery__img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 0.5rem; background: var(--brass-soft); display: block; }
+.gallery__cap { font-size: 0.78rem; color: var(--ink-faint); }
+.gallery__alt { font-family: var(--mono); font-size: 0.72rem; padding: 0.3rem 0.45rem; border: 1px solid var(--rule); border-radius: 0.35rem; background: transparent; color: var(--ink); width: 100%; }
+.gallery__tools { display: flex; gap: 0.25rem; }
+.gallery__tools button { font-family: var(--mono); font-size: 0.72rem; line-height: 1; padding: 0.25rem 0.45rem; border: 1px solid var(--rule); border-radius: 0.35rem; background: transparent; color: var(--ink-mute); cursor: pointer; }
+.gallery__tools button:hover:not(:disabled) { color: var(--ink); border-color: var(--brass-deep); }
+.gallery__tools button:disabled { opacity: 0.35; cursor: default; }
+.gallery__add { margin-top: 0.7rem; display: flex; align-items: center; gap: 0.7rem; }
+.gallery__addbtn { font-family: var(--mono); font-size: 0.75rem; padding: 0.35rem 0.7rem; border: 1px dashed var(--rule); border-radius: 0.4rem; background: transparent; color: var(--ink-mute); cursor: pointer; }
+.gallery__addbtn:hover:not(:disabled) { color: var(--ink); border-color: var(--brass-deep); }
+.gallery__addbtn:disabled { opacity: 0.6; cursor: default; }
+.gallery__err { font-size: 0.75rem; color: var(--danger, #b4432a); }

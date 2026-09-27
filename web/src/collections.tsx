@@ -6,6 +6,7 @@ import { MODELS } from './experiences/models'
 import { PostExperience } from './experiences/PostExperience'
 import { TagExperience } from './experiences/TagExperience'
 import { GenericExperience } from './experiences/GenericExperience'
+import { NoteExperience } from './experiences/NoteExperience'
 
 export interface ResourcePatch {
     fields?: Record<string, unknown>
@@ -36,6 +37,7 @@ export interface ExperienceProps {
 
 const COMPONENTS: Record<string, ComponentType<ExperienceProps>> = {
     'blog-post': PostExperience as ComponentType<ExperienceProps>,
+    note: NoteExperience as ComponentType<ExperienceProps>,
     tag: TagExperience as ComponentType<ExperienceProps>,
     generic: GenericExperience as ComponentType<ExperienceProps>,
 }
@@ -77,6 +79,10 @@ export function viewFor(def: CollectionDef, m: CollectionMapping): CollectionVie
         references: m.references ?? {},
         Experience: COMPONENTS[m.experience] ?? GenericExperience,
         feedTitle: (r) => {
+            // A note has no title field, and falling through to "the first
+            // string field" would show its stable id. Derive from the body, the
+            // way the site itself does.
+            if (m.experience === 'note') return noteSummary(r.body) || r.slug
             const f = titleField || fallbackTitle
             return (f ? fstr(r, f) : '') || r.slug
         },
@@ -89,8 +95,35 @@ export function viewFor(def: CollectionDef, m: CollectionMapping): CollectionVie
                 const [y, mo, dd] = d.split('-')
                 return `/posts/${y}/${mo}/${dd}/${r.slug}/`
             }
+            if (m.experience === 'note') {
+                const d = map.date ? fstr(r, map.date) : ''
+                if (!d) return null
+                const [y, mo, dd] = d.split('-')
+                return `/notes/${y}/${mo}/${dd}/${r.slug}/`
+            }
             if (m.experience === 'tag') return `/tags/${r.slug}/`
             return null
         },
     }
+}
+
+// First sentence-ish of a note's body, for feed rows and anywhere a title would
+// otherwise go. Shallow on purpose - note bodies are short. Raw HTML (an embed)
+// contributes no prose, so a note that is only a video falls back to the
+// embed's own title.
+export function noteSummary(body: string, max = 72): string {
+    const embed = /<iframe[^>]*\btitle=["']([^"']+)["']/i.exec(body)
+    const text = body
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+        .replace(/^[>#\-*+\s]+/gm, '')
+        .replace(/[*_`~]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+    if (!text) return embed ? embed[1].trim() : ''
+    if (text.length <= max) return text
+    const cut = text.slice(0, max)
+    const sp = cut.lastIndexOf(' ')
+    return (sp > 20 ? cut.slice(0, sp) : cut).replace(/[,;:.\s]+$/, '') + '…'
 }

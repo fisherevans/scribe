@@ -2,7 +2,7 @@
 // a type and whether it's required. The mapping (.scribe.yml) binds each role to
 // a real schema field. The `body` role is special - it maps to the markdown
 // body, not a frontmatter field.
-export type RoleType = 'text' | 'markdown' | 'date' | 'boolean' | 'reference' | 'image' | 'number'
+export type RoleType = 'text' | 'markdown' | 'date' | 'boolean' | 'reference' | 'image' | 'number' | 'gallery'
 
 export interface RoleDef {
     role: string
@@ -33,6 +33,19 @@ export const MODELS: Record<string, ExperienceModel> = {
             { role: 'draft', label: 'Draft', type: 'boolean', required: false },
             { role: 'updatedDate', label: 'Updated', type: 'date', required: false },
             { role: 'heroImage', label: 'Hero image', type: 'image', required: false },
+        ],
+    },
+    // A note is deliberately titleless - that is the format, not an omission.
+    // Its photos are a `gallery`: a list of { src, alt } objects in frontmatter
+    // rather than images inside the prose, because a note is photo-first.
+    note: {
+        id: 'note', label: 'Note', glyph: '·', newLabel: '+ note', hasDetails: true,
+        roles: [
+            { role: 'body', label: 'Body', type: 'markdown', required: true },
+            { role: 'date', label: 'Date', type: 'date', required: true },
+            { role: 'images', label: 'Photos', type: 'gallery', required: false, list: true },
+            { role: 'tags', label: 'Tags', type: 'reference', required: false, list: true },
+            { role: 'draft', label: 'Draft', type: 'boolean', required: false },
         ],
     },
     tag: {

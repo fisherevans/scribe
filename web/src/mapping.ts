@@ -53,6 +53,12 @@ function matchField(def: CollectionDef, role: RoleDef): string | undefined {
 // setup flow confirms them.
 function chooseExperience(def: CollectionDef): string {
     const has = (pred: (f: FieldDef) => boolean) => def.fields.some(pred)
+    // A frontmatter collection with no title-ish field is a note: the absence
+    // of a title is the defining property of the format, so it is also the
+    // cleanest thing to detect. Checked before blog-post, which would otherwise
+    // match on any string field (a note's stable `id` is one).
+    const titleish = (f: FieldDef) => ['title', 'name', 'heading', 'label'].includes(f.name)
+    if (def.format === 'yaml-frontmatter' && !has(titleish)) return 'note'
     if (def.format === 'yaml-frontmatter' && has((f) => ['string', 'text'].includes(f.type))) return 'blog-post'
     if (has((f) => f.name === 'name')) return 'tag'
     return 'generic'
