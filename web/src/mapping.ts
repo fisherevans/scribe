@@ -36,17 +36,22 @@ function roleTypeMatches(role: RoleDef, f: FieldDef): boolean {
     }
 }
 
-// matchField: pick a schema field for a role - exact name first, then by type.
-function matchField(def: CollectionDef, role: RoleDef): string | undefined {
+// matchByName: the unambiguous case - the collection has a field named exactly
+// like the role. The body role is special: it is the markdown body, which
+// .pages.yml declares as a rich-text field usually named body/content.
+function matchByName(def: CollectionDef, role: RoleDef): string | undefined {
     if (role.role === 'body') {
-        // The markdown body shows up in .pages.yml as a rich-text field (usually
-        // named body/content). Bind it so it's recognized as covered (the editor
-        // still uses the actual file body, not this frontmatter field).
-        const named = def.fields.find((f) => ['body', 'content', 'markdown'].includes(f.name))
-        return named?.name ?? def.fields.find((f) => f.type === 'rich-text')?.name
+        return def.fields.find((f) => ['body', 'content', 'markdown'].includes(f.name))?.name
     }
-    if (def.fields.some((f) => f.name === role.role)) return role.role
-    return def.fields.find((f) => roleTypeMatches(role, f))?.name
+    return def.fields.find((f) => f.name === role.role)?.name
+}
+
+// matchByType: the guess - the first field whose type could satisfy the role.
+function matchByType(def: CollectionDef, role: RoleDef, taken: Set<string>): string | undefined {
+    if (role.role === 'body') {
+        return def.fields.find((f) => f.type === 'rich-text' && !taken.has(f.name))?.name
+    }
+    return def.fields.find((f) => roleTypeMatches(role, f) && !taken.has(f.name))?.name
 }
 
 // chooseExperience: a basic field-shape heuristic. Recommendations only - the
@@ -66,11 +71,25 @@ function chooseExperience(def: CollectionDef): string {
 
 // mapFieldsFor fills role->field bindings for a given experience by matching its
 // roles against the collection's fields. Used when (re)choosing an experience.
+//
+// Name matches are resolved for every role before any type guessing, and no
+// field is bound twice. Both matter once an experience has two roles of the same
+// type: blog-post has `draft` and `featured`, and a single-pass matcher would let
+// whichever came first consume the one boolean field by type - so a site with a
+// `draft` field and no `featured` field got a featured toggle wired to draft.
 export function mapFieldsFor(experience: string, def: CollectionDef): Record<string, string> {
+    const roles = MODELS[experience]?.roles ?? []
     const fields: Record<string, string> = {}
-    for (const role of MODELS[experience]?.roles ?? []) {
-        const f = matchField(def, role)
-        if (f) fields[role.role] = f
+    const taken = new Set<string>()
+    const bind = (role: string, field: string | undefined) => {
+        if (!field) return
+        fields[role] = field
+        taken.add(field)
+    }
+    for (const role of roles) bind(role.role, matchByName(def, role))
+    for (const role of roles) {
+        if (fields[role.role]) continue
+        bind(role.role, matchByType(def, role, taken))
     }
     return fields
 }
