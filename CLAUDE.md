@@ -8,7 +8,11 @@ is the practical "how to work in here" companion.
 
 - **`cmd/scribe`, `internal/`** - Go service.
   - `internal/schema` - parses `.pages.yml` into a normalized model (collections
-    + fields + types). Drives everything below.
+    + fields + types). Drives everything below. **Re-parsed after each git sync,
+    not just at boot** - `content.Store.ReloadSchema` swaps it in when the file's
+    hash changes, so a field added to the site's schema reaches the editor within
+    a sync. It used to be loaded exactly once in `main`, and a `featured` field
+    added to the blog was invisible for two weeks because of it.
   - `internal/content` - **generic, schema-driven**. A resource is
     `{slug, fields(open map), body}`, read/written for any collection. Frontmatter
     is re-emitted in schema-field order with type-aware rendering (dates/booleans
