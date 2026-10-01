@@ -31,6 +31,7 @@ export const MODELS: Record<string, ExperienceModel> = {
             { role: 'tags', label: 'Tags', type: 'reference', required: false, list: true },
             { role: 'date', label: 'Date', type: 'date', required: false },
             { role: 'draft', label: 'Draft', type: 'boolean', required: false },
+            { role: 'featured', label: 'Featured', type: 'boolean', required: false },
             { role: 'updatedDate', label: 'Updated', type: 'date', required: false },
             { role: 'heroImage', label: 'Hero image', type: 'image', required: false },
         ],

@@ -74,9 +74,10 @@ export function PublishSheet({ resource, map, references, def, open, onClose, on
                             </div>
                         )}
 
-                        {map.draft && (
+                        {(map.draft || map.featured) && (
                             <div className="field field--row">
-                                <label className="toggle"><input type="checkbox" checked={fbool(r, map.draft)} onChange={(e) => setField(map.draft, e.target.checked)} /><span className="toggle__track" /><span className="field__label">draft</span></label>
+                                {map.draft && <label className="toggle"><input type="checkbox" checked={fbool(r, map.draft)} onChange={(e) => setField(map.draft, e.target.checked)} /><span className="toggle__track" /><span className="field__label">draft</span></label>}
+                                {map.featured && <label className="toggle"><input type="checkbox" checked={fbool(r, map.featured)} onChange={(e) => setField(map.featured, e.target.checked)} /><span className="toggle__track" /><span className="field__label">featured on home page</span></label>}
                             </div>
                         )}
 
