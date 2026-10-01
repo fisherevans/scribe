@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -65,6 +66,11 @@ type Store struct {
 	// explicitly to cover coarse-mtime filesystems.
 	mu    sync.Mutex
 	cache map[string]cached
+	// Files List last skipped, keyed by repo-relative path -> the error string
+	// already logged for them, so a polled list doesn't repeat the same warning.
+	warned map[string]string
+
+	log *slog.Logger // nil = slog.Default()
 }
 
 type cached struct {
@@ -74,7 +80,18 @@ type cached struct {
 }
 
 func NewStore(repo string, s *schema.Schema) *Store {
-	return &Store{repo: repo, schema: s, cache: map[string]cached{}}
+	return &Store{repo: repo, schema: s, cache: map[string]cached{}, warned: map[string]string{}}
+}
+
+// SetLogger directs the store's warnings (skipped files) at the service's
+// logger. Unset, it falls back to slog.Default().
+func (s *Store) SetLogger(l *slog.Logger) { s.log = l }
+
+func (s *Store) logger() *slog.Logger {
+	if s.log != nil {
+		return s.log
+	}
+	return slog.Default()
 }
 
 func (s *Store) Schema() *schema.Schema { return s.schema }
@@ -128,16 +145,30 @@ func (s *Store) ResolvePath(rel string) (collection, slug string, ok bool) {
 
 // ---- read ---------------------------------------------------------------
 
-func (s *Store) List(name string) ([]Resource, error) {
+// Problem is one file in a collection that could not be read or parsed. List
+// skips it and reports it rather than failing the whole collection: a single
+// bad escape in one note used to take the whole editor down.
+type Problem struct {
+	Slug  string `json:"slug"`
+	Path  string `json:"path"` // repo-relative, so a message can name the file to fix
+	Error string `json:"error"`
+}
+
+// List returns every readable resource in a collection plus the files it had to
+// skip. The error return is reserved for collection-level failures (unknown
+// collection, unreadable directory) - a per-file failure is a Problem, never an
+// error, so one unparseable file can't hide the other ninety.
+func (s *Store) List(name string) ([]Resource, []Problem, error) {
 	c, err := s.collection(name)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	entries, err := os.ReadDir(s.dir(c))
 	if err != nil {
-		return nil, fmt.Errorf("read %s dir: %w", name, err)
+		return nil, nil, fmt.Errorf("read %s dir: %w", name, err)
 	}
 	var out []Resource
+	var problems []Problem
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), c.Ext) {
 			continue
@@ -145,12 +176,43 @@ func (s *Store) List(name string) ([]Resource, error) {
 		slug := strings.TrimSuffix(e.Name(), c.Ext)
 		r, err := s.Read(name, slug)
 		if err != nil {
-			return nil, err
+			rel := filepath.ToSlash(filepath.Join(c.Path, e.Name()))
+			problems = append(problems, Problem{Slug: slug, Path: rel, Error: err.Error()})
+			s.warnSkipped(rel, err)
+			continue
 		}
+		s.clearWarned(filepath.ToSlash(filepath.Join(c.Path, e.Name())))
 		out = append(out, *r)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Slug < out[j].Slug })
-	return out, nil
+	sort.Slice(problems, func(i, j int) bool { return problems[i].Slug < problems[j].Slug })
+	return out, problems, nil
+}
+
+// warnSkipped logs a skipped file once per distinct error. The list is polled,
+// so logging unconditionally would repeat the same line forever; re-logging on a
+// *changed* error still shows a half-fixed file moving.
+func (s *Store) warnSkipped(rel string, err error) {
+	msg := err.Error()
+	s.mu.Lock()
+	seen := s.warned[rel] == msg
+	s.warned[rel] = msg
+	s.mu.Unlock()
+	if !seen {
+		s.logger().Warn("skipping unreadable content file", "path", rel, "err", msg)
+	}
+}
+
+func (s *Store) clearWarned(rel string) {
+	s.mu.Lock()
+	_, had := s.warned[rel]
+	if had {
+		delete(s.warned, rel)
+	}
+	s.mu.Unlock()
+	if had {
+		s.logger().Info("content file reads again", "path", rel)
+	}
 }
 
 func (s *Store) Read(name, slug string) (*Resource, error) {

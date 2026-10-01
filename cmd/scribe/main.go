@@ -69,6 +69,7 @@ func main() {
 	log.Info("loaded schema", "collections", len(sch.Collections))
 
 	cstore := content.NewStore(*repo, sch)
+	cstore.SetLogger(log) // so a skipped (unparseable) content file shows up in the service log
 	notes, err := store.OpenNotes(filepath.Join(*data, "notes.json"))
 	if err != nil {
 		log.Error("failed to open notes store", "data", *data, "err", err)

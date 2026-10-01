@@ -238,6 +238,78 @@ func TestWriteConflictDetection(t *testing.T) {
 	}
 }
 
+// One unparseable file must not hide the rest of the collection. This is the
+// bug that took scribe down: a note whose alt text carried a `\uD83D` surrogate
+// escape (valid to js-yaml, rejected by yaml.v3) made List fail outright, and
+// the editor showed its crash screen instead of the other ninety notes.
+func TestListSkipsUnreadableFiles(t *testing.T) {
+	s := newTestStore(t)
+	dir := filepath.Join(s.repo, "src/content/posts")
+	good := "---\ntitle: Fine\ndate: 2026-01-01\n---\n\nBody.\n"
+	bad := "---\ntitle: \"emoji \\uD83D\\uDE05\"\ndate: 2026-01-02\n---\n\nBody.\n"
+	write := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("alpha.md", good)
+	write("broken.md", bad)
+	write("zeta.md", good)
+
+	got, problems, err := s.List("posts")
+	if err != nil {
+		t.Fatalf("List should not fail on a bad file, got %v", err)
+	}
+	var slugs []string
+	for _, r := range got {
+		slugs = append(slugs, r.Slug)
+	}
+	if !reflect.DeepEqual(slugs, []string{"alpha", "zeta"}) {
+		t.Fatalf("readable resources = %v, want [alpha zeta]", slugs)
+	}
+	if len(problems) != 1 {
+		t.Fatalf("problems = %v, want exactly one", problems)
+	}
+	p := problems[0]
+	if p.Slug != "broken" {
+		t.Errorf("problem slug = %q, want %q", p.Slug, "broken")
+	}
+	if p.Path != "src/content/posts/broken.md" {
+		t.Errorf("problem path = %q, want the repo-relative file", p.Path)
+	}
+	// The message has to name the file and say what yaml objected to - it is
+	// what the editor shows and the only clue to what needs fixing.
+	if !strings.Contains(p.Error, "parse posts/broken") || !strings.Contains(p.Error, "yaml") {
+		t.Errorf("problem error = %q, want the parse error for the file", p.Error)
+	}
+
+	// Fixing the file clears it from both lists.
+	write("broken.md", good)
+	got, problems, err = s.List("posts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 || len(problems) != 0 {
+		t.Fatalf("after the fix: %d resources, %d problems; want 3 and 0", len(got), len(problems))
+	}
+}
+
+// A collection-level failure is still an error: an unknown collection or a
+// missing directory is not something the editor can show a partial list for.
+func TestListFailsOnMissingCollection(t *testing.T) {
+	s := newTestStore(t)
+	if _, _, err := s.List("nope"); err == nil {
+		t.Fatal("expected an error for an unknown collection")
+	}
+	if err := os.RemoveAll(filepath.Join(s.repo, "src/content/tags")); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.List("tags"); err == nil {
+		t.Fatal("expected an error for a missing collection dir")
+	}
+}
+
 func mustCol(t *testing.T, s *Store, name string) *schema.Collection {
 	t.Helper()
 	c, err := s.collection(name)

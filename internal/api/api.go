@@ -153,9 +153,17 @@ func (s *Server) saveMapping(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, m)
 }
 
+// listResponse is the list endpoint's envelope. It carries the files the store
+// had to skip alongside the ones it read, so the editor can show the collection
+// and name what is broken instead of failing the whole load.
+type listResponse struct {
+	Resources []resource        `json:"resources"`
+	Problems  []content.Problem `json:"problems"`
+}
+
 func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	c := r.PathValue("collection")
-	rs, err := s.store.List(c)
+	rs, problems, err := s.store.List(c)
 	if err != nil {
 		fail(w, err)
 		return
@@ -166,7 +174,10 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		out[i] = s.wrap(c, res)
 		s.applyState(c, &out[i], staged)
 	}
-	writeJSON(w, out)
+	if problems == nil {
+		problems = []content.Problem{}
+	}
+	writeJSON(w, listResponse{Resources: out, Problems: problems})
 }
 
 func (s *Server) create(w http.ResponseWriter, r *http.Request) {
