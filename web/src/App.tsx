@@ -226,7 +226,10 @@ export default function App() {
         return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update) }
     }, [])
 
-    // Load schema, then every collection's resources.
+    // Load schema, then every collection's resources. loadedRef gates refetchAll,
+    // which must not race the first load (and must not re-identify on every
+    // schema swap - it is a dependency of the sync poll).
+    const loadedRef = useRef(false)
     useEffect(() => {
         Promise.all([api.schema(), api.mapping()])
             .then(async ([sch, map]) => {
@@ -248,6 +251,7 @@ export default function App() {
                 const start = init.collection && names.includes(init.collection) ? init.collection : sch.primary || names[0]
                 if (init.slug && nextLists[start]?.some((r) => r.slug === init.slug)) firstSel[start] = init.slug
                 setSchema(sch); setMapping(map); setLists(nextLists); setSel(firstSel); setCollection(start)
+                loadedRef.current = true
                 writeHash(start, firstSel[start], true)
             })
             .catch((e) => {
@@ -387,9 +391,15 @@ export default function App() {
     )
 
     // Re-pull every collection (after a publish, states flip back to promoted).
+    // The schema and mapping come along: both .pages.yml and .scribe.yml travel
+    // with the content, the service re-parses the schema on each sync, and this
+    // runs when a sync moved the revision - so a field added to the blog's schema
+    // reaches the editor without reloading the app.
     const refetchAll = useCallback(async () => {
-        if (!schema) return
-        const names = schema.collections.map((c) => c.name)
+        if (!loadedRef.current) return
+        const [sch, map] = await Promise.all([api.schema(), api.mapping()])
+        setSchema(sch); setMapping(map)
+        const names = sch.collections.map((c) => c.name)
         const results = await Promise.all(names.map((c) => api.list(c)))
         setProblems(results.flatMap((r) => r?.problems ?? []))
         setLists((cur) => {
@@ -400,7 +410,7 @@ export default function App() {
             })
             return next
         })
-    }, [schema, saver])
+    }, [saver])
 
     // Publish = review the whole staged changeset, then commit + push it atomically.
     const openPublish = useCallback(async () => {
