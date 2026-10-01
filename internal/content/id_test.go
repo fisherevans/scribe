@@ -21,7 +21,7 @@ func primarySchema() *schema.Schema {
 func newPrimaryStore(t *testing.T) *Store {
 	t.Helper()
 	s := newTestStore(t)
-	s.schema = primarySchema()
+	s.schema.Store(primarySchema())
 	return s
 }
 
@@ -115,7 +115,7 @@ func notesSchema() *schema.Schema {
 func newNotesStore(t *testing.T) *Store {
 	t.Helper()
 	s := newTestStore(t)
-	s.schema = notesSchema()
+	s.schema.Store(notesSchema())
 	if err := os.MkdirAll(filepath.Join(s.repo, "src/content/notes"), 0o755); err != nil {
 		t.Fatal(err)
 	}

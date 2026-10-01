@@ -178,6 +178,19 @@ func main() {
 		go ticker(ctx, *syncInterval, func() {
 			if err := grepo.Sync(); err != nil {
 				log.Warn("sync failed", "err", err)
+				return
+			}
+			// The schema travels with the content. A pull that brings in a new
+			// or renamed .pages.yml field has to be re-parsed, or the editor
+			// keeps showing the field set the process booted with until someone
+			// restarts it.
+			changed, err := cstore.ReloadSchema()
+			if err != nil {
+				log.Warn("schema reload failed, keeping the loaded schema", "err", err)
+				return
+			}
+			if changed {
+				log.Info("reloaded schema after sync", "collections", len(cstore.Schema().Collections))
 			}
 		})
 		log.Info("background sync running", "backup", *backupInterval, "sync", *syncInterval)

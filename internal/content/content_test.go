@@ -318,3 +318,132 @@ func mustCol(t *testing.T, s *Store, name string) *schema.Collection {
 	}
 	return c
 }
+
+// A field added to .pages.yml after the store was built has to become visible
+// without a process restart - the whole point of reloading the schema on sync.
+func TestReloadSchemaPicksUpANewField(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, "src/content/posts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pages := filepath.Join(repo, ".pages.yml")
+	write := func(extra string) {
+		t.Helper()
+		body := `content:
+  - name: posts
+    path: src/content/posts
+    type: collection
+    format: yaml-frontmatter
+    filename: '{primary}.md'
+    fields:
+      - name: title
+        type: string
+      - name: draft
+        type: boolean
+` + extra
+		if err := os.WriteFile(pages, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	write("")
+	sch, err := schema.Load(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewStore(repo, sch)
+	if c, _ := s.Schema().Collection("posts"); len(c.Fields) != 2 {
+		t.Fatalf("baseline: want 2 fields, got %d", len(c.Fields))
+	}
+
+	// Nothing changed on disk: a reload must be a no-op, not a reparse.
+	if changed, err := s.ReloadSchema(); err != nil || changed {
+		t.Fatalf("unchanged .pages.yml: got changed=%v err=%v, want false/nil", changed, err)
+	}
+
+	write("      - name: featured\n        label: Featured on the home page\n        type: boolean\n")
+	changed, err := s.ReloadSchema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("a rewritten .pages.yml should report the schema as changed")
+	}
+	c, ok := s.Schema().Collection("posts")
+	if !ok {
+		t.Fatal("posts collection vanished after reload")
+	}
+	f, ok := c.Field("featured")
+	if !ok {
+		t.Fatalf("featured not visible after reload; fields=%v", c.Fields)
+	}
+	if f.Type != "boolean" || f.Label != "Featured on the home page" {
+		t.Errorf("featured parsed wrong: %+v", f)
+	}
+}
+
+// The parsed-resource cache is keyed on the file, not the schema, so a schema
+// swap has to clear it - otherwise a newly declared field keeps rendering with
+// the old type (or not at all) until the file is touched.
+func TestReloadSchemaInvalidatesTheResourceCache(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, "src/content/posts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pages := func(extra string) {
+		t.Helper()
+		body := `content:
+  - name: posts
+    path: src/content/posts
+    type: collection
+    format: yaml-frontmatter
+    filename: '{primary}.md'
+    fields:
+      - name: title
+        type: string
+` + extra
+		if err := os.WriteFile(filepath.Join(repo, ".pages.yml"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pages("")
+	sch, err := schema.Load(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewStore(repo, sch)
+
+	post := "---\ntitle: Hello\nfeatured: true\n---\n\nBody.\n"
+	if err := os.WriteFile(filepath.Join(repo, "src/content/posts/hello.md"), []byte(post), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Prime the cache while `featured` is an undeclared extra field.
+	if _, err := s.Read("posts", "hello"); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	cached := len(s.cache)
+	s.mu.Unlock()
+	if cached == 0 {
+		t.Fatal("expected the read to populate the cache")
+	}
+
+	pages("      - name: featured\n        type: boolean\n")
+	if changed, err := s.ReloadSchema(); err != nil || !changed {
+		t.Fatalf("got changed=%v err=%v, want true/nil", changed, err)
+	}
+	s.mu.Lock()
+	cached = len(s.cache)
+	s.mu.Unlock()
+	if cached != 0 {
+		t.Fatalf("schema swap left %d cached resources", cached)
+	}
+	// And the declared boolean now renders bare rather than as a preserved extra.
+	r, err := s.Read("posts", "hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Fields["featured"] != true {
+		t.Errorf("featured = %#v, want true", r.Fields["featured"])
+	}
+}

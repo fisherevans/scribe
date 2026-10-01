@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fisherevans/scribe/internal/schema"
@@ -56,8 +57,13 @@ type Resource struct {
 
 // Store is rooted at a blog repo checkout and driven by its schema.
 type Store struct {
-	repo   string
-	schema *schema.Schema
+	repo string
+	// The active schema. Held atomically because ReloadSchema swaps it from the
+	// background sync goroutine while requests are reading it.
+	schema atomic.Pointer[schema.Schema]
+	// Fingerprint of the .pages.yml the active schema was parsed from, so a
+	// reload after each sync is a cheap no-op unless the file actually changed.
+	schemaFP string
 
 	// Parsed-resource cache, keyed by absolute file path and validated by the
 	// file's mtime+size, so a list doesn't re-read and re-parse every file on
@@ -80,7 +86,10 @@ type cached struct {
 }
 
 func NewStore(repo string, s *schema.Schema) *Store {
-	return &Store{repo: repo, schema: s, cache: map[string]cached{}, warned: map[string]string{}}
+	st := &Store{repo: repo, cache: map[string]cached{}, warned: map[string]string{}}
+	st.schema.Store(s)
+	_, st.schemaFP, _ = schemaBytes(repo)
+	return st
 }
 
 // SetLogger directs the store's warnings (skipped files) at the service's
@@ -94,14 +103,62 @@ func (s *Store) logger() *slog.Logger {
 	return slog.Default()
 }
 
-func (s *Store) Schema() *schema.Schema { return s.schema }
+func (s *Store) Schema() *schema.Schema { return s.schema.Load() }
+
+// ReloadSchema re-reads .pages.yml and swaps the parsed result in if the file
+// changed since the last load, reporting whether it did.
+//
+// Scribe used to parse the schema exactly once, at startup, so a field added to
+// .pages.yml stayed invisible to the editor until the process restarted: the
+// git sync loop pulls content, and the schema is not content. A `featured` field
+// added to the blog in September was still missing from the editor two weeks
+// later for exactly this reason. The sync loop now calls this after each
+// successful pull.
+//
+// A new schema invalidates the parsed-resource cache: parsing is schema-driven
+// (declared field types bias scalar handling), so everything cached was parsed
+// under the old field set.
+func (s *Store) ReloadSchema() (bool, error) {
+	b, fp, err := schemaBytes(s.repo)
+	if err != nil {
+		return false, err
+	}
+	s.mu.Lock()
+	same := fp == s.schemaFP
+	s.mu.Unlock()
+	if same {
+		return false, nil
+	}
+	sch, err := schema.Parse(b)
+	if err != nil {
+		return false, err
+	}
+	s.schema.Store(sch)
+	s.mu.Lock()
+	s.schemaFP = fp
+	s.cache = map[string]cached{}
+	s.mu.Unlock()
+	return true, nil
+}
+
+// schemaBytes reads .pages.yml with a content fingerprint identifying it. The
+// fingerprint is a hash rather than mtime+size so a same-second rewrite of the
+// same length (a git checkout flipping between two revisions) can't read as
+// unchanged.
+func schemaBytes(repo string) ([]byte, string, error) {
+	b, err := os.ReadFile(filepath.Join(repo, ".pages.yml"))
+	if err != nil {
+		return nil, "", fmt.Errorf("read .pages.yml: %w", err)
+	}
+	return b, version(b), nil
+}
 
 // Root is the blog repo checkout the store is rooted at. Callers that need to
 // resolve paths outside the content tree (e.g. media uploads) use this.
 func (s *Store) Root() string { return s.repo }
 
 func (s *Store) collection(name string) (*schema.Collection, error) {
-	c, ok := s.schema.Collection(name)
+	c, ok := s.Schema().Collection(name)
 	if !ok {
 		return nil, fmt.Errorf("unknown collection %q", name)
 	}
@@ -129,7 +186,7 @@ func (s *Store) RelPath(collection, slug string) (string, error) {
 // (assets, config, etc.). Used to translate a git changeset into resources.
 func (s *Store) ResolvePath(rel string) (collection, slug string, ok bool) {
 	rel = filepath.ToSlash(rel)
-	for _, c := range s.schema.Collections {
+	for _, c := range s.Schema().Collections {
 		dir := filepath.ToSlash(c.Path) + "/"
 		if !strings.HasPrefix(rel, dir) || !strings.HasSuffix(rel, c.Ext) {
 			continue
@@ -573,10 +630,11 @@ func isScalarValue(v any) bool {
 // says nothing else. Before this, only the primary collection minted, so every
 // note saved from scribe arrived without one and the site's build refused it.
 func (s *Store) mintsID(name string) bool {
-	if name == s.schema.Primary {
+	sch := s.Schema()
+	if name == sch.Primary {
 		return true
 	}
-	c, ok := s.schema.Collection(name)
+	c, ok := sch.Collection(name)
 	if !ok {
 		return false
 	}
