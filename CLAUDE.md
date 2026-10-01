@@ -13,11 +13,15 @@ is the practical "how to work in here" companion.
     `{slug, fields(open map), body}`, read/written for any collection. Frontmatter
     is re-emitted in schema-field order with type-aware rendering (dates/booleans
     bare, lists as block seqs) for byte-stable round-trips; unknown fields
-    preserved. Body bytes pass through untouched.
+    preserved. Body bytes pass through untouched. **`List` never fails on one
+    bad file** - it skips it, returns it as a `Problem{slug, path, error}` and
+    warns once; its error return is for collection-level failures only. One note
+    with a surrogate `\uXXXX` escape used to take the whole editor down.
   - `internal/store` - private app-side metadata (notes). File-backed JSON under
     `SCRIBE_DATA` (default user config dir). **Never** written to the blog repo.
   - `internal/api` - HTTP/JSON. Resources are returned in the shape the web app
-    expects (`kind`/`slug`/`state`/`dirty` + fields). Also serves the repo's
+    expects (`kind`/`slug`/`state`/`dirty` + fields). The list endpoint returns
+    `{resources, problems}`, not a bare array. Also serves the repo's
     `public/` so site-relative asset paths resolve. No auth here - the
     `internal/auth` Authenticator wraps this mux in `main` (modes `none`/`oidc`;
     see docs/oidc.md).
