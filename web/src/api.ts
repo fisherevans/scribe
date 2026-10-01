@@ -79,7 +79,7 @@ export const api = {
             body: JSON.stringify(m),
         }).then(json)
     },
-    list(c: string): Promise<Resource[]> {
+    list(c: string): Promise<ListResult> {
         return request(C(c)).then(json)
     },
     // Full resource: the service rewrites the whole file, so a partial would drop
@@ -155,6 +155,19 @@ export const api = {
     syncNow(): Promise<SyncStatus> {
         return request('/api/sync', { method: 'POST' }).then(json)
     },
+}
+
+// A file in a collection the service could not read or parse. It is skipped
+// rather than failing the list, and named to the writer so it can be fixed.
+export interface ContentProblem {
+    slug: string
+    path: string // repo-relative
+    error: string
+}
+
+export interface ListResult {
+    resources: Resource[]
+    problems: ContentProblem[]
 }
 
 export interface Capabilities {

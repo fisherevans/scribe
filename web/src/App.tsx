@@ -22,8 +22,9 @@ import { SyncBanner } from './components/SyncBanner'
 import { ConflictBanner } from './components/ConflictBanner'
 import { ConflictResolveModal } from './components/ConflictResolveModal'
 import { SaveErrorBanner, type SaveErrorReason } from './components/SaveErrorBanner'
+import { ContentProblemsBanner } from './components/ContentProblemsBanner'
 import { DraftRecovery, type RecoverItem } from './components/DraftRecovery'
-import type { Capabilities, PublishChange, SyncStatus } from './api'
+import { AuthError, OfflineError, type Capabilities, type ContentProblem, type PublishChange, type SyncStatus } from './api'
 import { TitleSlugModal } from './components/TitleSlugModal'
 import { applyTheme, DEFAULT_THEME, loadTheme, saveTheme, type Theme } from './theme'
 import { loadSettings, saveSettings, liveUrl, type AppSettings } from './settings'
@@ -92,7 +93,14 @@ export default function App() {
     const [modal, setModal] = useState<{ open: boolean; mode: 'new' | 'edit' }>({ open: false, mode: 'new' })
     const [theme, setTheme] = useState<Theme>(loadTheme)
     const [settings, setSettings] = useState<AppSettings>(loadSettings)
-    const [loadError, setLoadError] = useState<string | null>(null)
+    // A failed initial load, split by cause: 'offline' means we never reached the
+    // service, 'server' means it answered with an error. They want different copy
+    // - telling someone to check the Go service when the service just told us
+    // what was wrong sent the last outage looking in the wrong place.
+    const [loadError, setLoadError] = useState<{ kind: 'offline' | 'auth' | 'server'; message: string } | null>(null)
+    // Files the service skipped because it couldn't parse them, across every
+    // collection. Non-blocking: the rest of the content is editable.
+    const [problems, setProblems] = useState<ContentProblem[]>([])
     const [caps, setCaps] = useState<Capabilities | null>(null)
     // localStorage edits that never reached the server (auth loss / crash), read
     // once at mount before any save can clear them. Surfaced via DraftRecovery.
@@ -226,8 +234,9 @@ export default function App() {
                 const results = await Promise.all(names.map((c) => api.list(c)))
                 const nextLists: Record<string, Resource[]> = {}
                 const firstSel: Record<string, string | null> = {}
+                setProblems(results.flatMap((r) => r?.problems ?? []))
                 names.forEach((c, i) => {
-                    nextLists[c] = results[i] ?? []
+                    nextLists[c] = results[i]?.resources ?? []
                     // Default to the newest by date, matching the feed's default
                     // sort. The server lists alphabetically by slug, so without
                     // this a fresh load would auto-open whatever slug sorts first
@@ -241,7 +250,10 @@ export default function App() {
                 setSchema(sch); setMapping(map); setLists(nextLists); setSel(firstSel); setCollection(start)
                 writeHash(start, firstSel[start], true)
             })
-            .catch((e) => setLoadError(e instanceof Error ? e.message : String(e)))
+            .catch((e) => {
+                const kind = e instanceof OfflineError ? 'offline' : e instanceof AuthError ? 'auth' : 'server'
+                setLoadError({ kind, message: e instanceof Error ? e.message : String(e) })
+            })
         api.capabilities().then(setCaps).catch(() => {})
     }, [])
 
@@ -379,10 +391,11 @@ export default function App() {
         if (!schema) return
         const names = schema.collections.map((c) => c.name)
         const results = await Promise.all(names.map((c) => api.list(c)))
+        setProblems(results.flatMap((r) => r?.problems ?? []))
         setLists((cur) => {
             const next: Record<string, Resource[]> = { ...cur }
             names.forEach((c, i) => {
-                next[c] = results[i] ?? []
+                next[c] = results[i]?.resources ?? []
                 for (const r of next[c]) saver.seed(c, r.slug, r.version)
             })
             return next
@@ -653,10 +666,23 @@ export default function App() {
     }, [])
 
     if (loadError) {
+        // Three different failures, three different next moves. The old screen
+        // said "is the Go service running" for all of them, which pointed at the
+        // service when the service was the thing telling us what was wrong.
+        const title =
+            loadError.kind === 'offline' ? 'Can’t reach the editor service'
+            : loadError.kind === 'auth' ? 'You’re signed out'
+            : 'The editor service couldn’t load your content'
+        const hint =
+            loadError.kind === 'offline' ? 'Is the Go service running on :8080?'
+            : loadError.kind === 'auth' ? 'Reload to sign back in.'
+            : 'It answered, but with an error:'
         return (
             <div className="crash"><div className="crash__box">
-                <h1 className="crash__title">Can’t reach the editor service</h1>
-                <p className="crash__msg">{loadError}. Is the Go service running on :8080?</p>
+                <h1 className="crash__title">{title}</h1>
+                <p className="crash__msg">
+                    {loadError.kind === 'server' ? <>{hint} <span className="crash__detail">{loadError.message}</span></> : <>{loadError.message}. {hint}</>}
+                </p>
                 <button className="btn btn--promote" type="button" onClick={() => location.reload()}>retry</button>
             </div></div>
         )
@@ -667,6 +693,7 @@ export default function App() {
         <DataContext.Provider value={dataApi}>
         <UploadContext.Provider value={{ externalEnabled: caps?.upload.external ?? false, collection, slug: activeSlug ?? '' }}>
         <SyncBanner status={sync} retrying={syncRetrying} onRetry={retrySync} />
+        <ContentProblemsBanner problems={problems} />
         {saveError && <SaveErrorBanner reason={saveError} />}
         {conflict && active && (
             <ConflictBanner
