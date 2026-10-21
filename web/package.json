@@ -26,7 +26,7 @@
     "diff": "^9.0.0",
     "framer-motion": "^11.18.2",
     "lowlight": "^3.3.0",
-    "markdown-it": "^14.2.0",
+    "markdown-it": "^14.3.3",
     "prosemirror-markdown": "^1.13.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -39,7 +39,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "jsdom": "^25.0.1",
     "typescript": "^5.7.3",
-    "vite": "^6.0.7",
-    "vitest": "^2.1.9"
+    "vite": "^6.4.5",
+    "vitest": "^4.1.11"
   }
 }
