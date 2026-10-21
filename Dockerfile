@@ -22,7 +22,7 @@ RUN rm -rf internal/webui/dist
 COPY --from=web /web/dist internal/webui/dist
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /scribe ./cmd/scribe
 
-FROM alpine:3.20
+FROM alpine:3.22
 # git is required (scribe shells out to it); openssh-client is not needed since
 # pushes use an HTTPS token credential helper (see docker-entrypoint.sh).
 # rclone is the bundled object-store client for the upload plugins (a single
