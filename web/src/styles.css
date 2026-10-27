@@ -1261,7 +1261,7 @@ button.chip__label:hover { text-decoration: underline; }
     border-radius: 0.9rem; padding: 1.4rem;
     box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
 }
-.cascade__title { font-size: 1.05rem; font-weight: 600; color: var(--ink); margin: 0 0 0.35rem; }
+.cascade__title { font-size: 1.05rem; font-weight: 600; color: var(--ink-on-desk); margin: 0 0 0.35rem; }
 .cascade__sub { font-size: 0.82rem; color: var(--ink-mute); margin: 0; line-height: 1.5; }
 .cascade__slug { font-family: var(--mono); font-size: 0.78rem; color: var(--ink-on-desk); background: var(--desk); padding: 0.05rem 0.3rem; border-radius: 4px; }
 .cascade__refs { list-style: none; margin: 1rem 0; padding: 0.5rem; max-height: 14rem; overflow-y: auto; background: var(--desk); border: 1px solid var(--desk-line); border-radius: 0.6rem; display: flex; flex-direction: column; gap: 0.3rem; }
@@ -1488,14 +1488,16 @@ button.chip__label:hover { text-decoration: underline; }
 .status--error { color: var(--rose); font-weight: 600; }
 
 /* Draft recovery dialog (reuses the .cascade modal shell). */
-.recover { max-width: 40rem; }
-.recover__list { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 0.9rem; }
-.recover__item { border: 1px solid var(--desk-line); border-radius: 0.55rem; padding: 0.6rem 0.75rem; background: var(--desk); }
-.recover__row { display: flex; align-items: center; gap: 0.8rem; }
-.recover__meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
-.recover__label { font-family: var(--serif-display); font-size: 0.98rem; color: var(--ink-on-desk); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.recover__sub { font-family: var(--mono); font-size: 0.66rem; color: var(--ink-faint); }
-.recover__actions { flex: none; display: flex; gap: 0.4rem; }
+.recover { width: min(36rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); overflow-y: auto; }
+.recover__list { display: flex; flex-direction: column; gap: 0.6rem; margin: 1rem 0 0.9rem; }
+.recover__item { border: 1px solid var(--desk-line); border-radius: 0.55rem; padding: 0.7rem 0.8rem; background: var(--desk); }
+/* Meta and actions share a row when there is room and wrap onto two lines when
+   there is not (phones), so the buttons never squeeze the title (scribe#33). */
+.recover__row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 0.8rem; }
+.recover__meta { flex: 1 1 12rem; min-width: 0; display: flex; flex-direction: column; gap: 0.2rem; }
+.recover__label { font-family: var(--serif-display); font-size: 1rem; color: var(--ink-on-desk); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recover__sub { font-family: var(--mono); font-size: 0.7rem; color: var(--ink-mute); }
+.recover__actions { flex: 1 0 auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.4rem; }
 
 /* Line diff (recovery + conflict). */
 /* Dedicated diff colors: a clearly distinct green/red (the old sage/rose were
